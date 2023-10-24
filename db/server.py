@@ -1,4 +1,4 @@
-import socket
+import socket # ????
 
 if __name__ == "__main__":
     # create an INET STREAMING socket.
