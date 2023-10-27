@@ -77,7 +77,7 @@ def init():
                                                           date   DATE NOT NULL)""")
 
     # Player table
-    cur.execute("""CREATE TABLE IF NOT EXISTS players(id      INT UNSIGNED NOT NULL PRIMARY KEY,
+    cur.execute("""CREATE TABLE IF NOT EXISTS players(id      INT UNSIGNED PRIMARY KEY,
                                                       name    TEXT NOT NULL,
                                                       skill   SMALLINT UNSIGNED NOT NULL)""")
 
@@ -89,8 +89,7 @@ def init():
                                                       p1_id   INT UNSIGNED NOT NULL,
                                                       p2_id   INT UNSIGNED NOT NULL,
                                                       FOREIGN KEY (t_id) REFERENCES tournaments(id),
-                                                      FOREIGN KEY (p1_id) REFERENCES players(id),
-                                                      FOREIGN KEY (p2_id) REFERENCES players(id))""")
+                                                      FOREIGN KEY (p1_id, p2_id) REFERENCES players(id, id) ON DELETE SET NULL)""")
     db.commit()
     
     # Game table
@@ -98,22 +97,21 @@ def init():
                                                     m_id       INT UNSIGNED NOT NULL,
                                                     p1_score   TINYINT UNSIGNED NOT NULL,
                                                     p2_score   TINYINT UNSIGNED NOT NULL,
-                                                    FOREIGN KEY (m_id) REFERENCES matches(id))""")
+                                                    FOREIGN KEY (m_id) REFERENCES matches(id) ON DELETE CASCADE)""")
     
     # Match binary tree
     cur.execute("""CREATE TABLE IF NOT EXISTS match_tree(parent_id      INT UNSIGNED NOT NULL PRIMARY KEY,
                                                          l_child_id     INT UNSIGNED NOT NULL,
                                                          r_child_id     INT UNSIGNED NOT NULL,
-                                                         FOREIGN KEY (parent_id) REFERENCES matches(id),
-                                                         FOREIGN KEY (l_child_id) REFERENCES matches(id),
-                                                         FOREIGN KEY (r_child_id) REFERENCES matches(id))""")
+                                                         FOREIGN KEY (parent_id, l_child_id, r_child_id) REFERENCES matches(id, id, id)
+                                                         ON DELETE CASCADE)""")
     db.commit()
     
     # Insert the null player into the players table if necessary.
-    # Null player will have an id of 0.
-    res = cur.execute("SELECT * FROM players WHERE id = 0")
+    # Null player will have an id of NULL (translates to None).
+    res = cur.execute("SELECT * FROM players WHERE id IS NULL")
     if res.fetchone() is None:
-        cur.execute("INSERT INTO players (id, name, skill) VALUES (0, 'N/A', 0)")
+        cur.execute("INSERT INTO players (id, name, skill) VALUES (NULL, 'N/A', 0)")
         
     db.commit()
     
