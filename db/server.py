@@ -22,6 +22,7 @@ ret["BT"][parent_id] = [ l_child_id, r_child_id ]
 def fetchall():
     global db
     cur = db.cursor()
+    exec("x = 3")
     
     ret = dict()
 
@@ -86,8 +87,8 @@ def init():
     # Match table
     cur.execute("""CREATE TABLE IF NOT EXISTS matches(id      INT UNSIGNED NOT NULL PRIMARY KEY,
                                                       t_id    INT UNSIGNED NOT NULL,
-                                                      p1_id   INT UNSIGNED NOT NULL,
-                                                      p2_id   INT UNSIGNED NOT NULL,
+                                                      p1_id   INT UNSIGNED,
+                                                      p2_id   INT UNSIGNED,
                                                       FOREIGN KEY (t_id) REFERENCES tournaments(id),
                                                       FOREIGN KEY (p1_id, p2_id) REFERENCES players(id, id) ON DELETE SET NULL)""")
     db.commit()
