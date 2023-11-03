@@ -22,7 +22,6 @@ ret["BT"][parent_id] = [ l_child_id, r_child_id ]
 def fetchall():
     global db
     cur = db.cursor()
-    exec("x = 3")
     
     ret = dict()
 
@@ -65,6 +64,76 @@ class SimpleServer(protocol.Protocol):
         "As soon as any data is received, write it back."
         self.transport.write(str(fetchall()).encode())
 
+def create_debug_testing_data():
+    global db
+
+    cur = db.cursor()
+
+    # CREATE TEST TOURNEMENT
+    cur.execute("INSERT INTO tournaments (id, name, date) VALUES (?, ?, DATE('now'))",
+                (0, "TestTournament0")) # Values in a tuple
+    db.commit()
+
+    # CREATE TEST PLAYERS
+    for i in range(4):
+        cur.execute("INSERT INTO players (id, name, skill) VALUES (?, ?, 0)",
+                    (i, f"TestPlayer{i}"))
+        db.commit()
+
+    
+    # CREATE MATCHES
+    cur.execute("""INSERT INTO matches (id, t_id, p1_id, p2_id) VALUES
+                   (0, 0, 0, 1),
+                   (1, 0, 2, 3),
+                   (2, 0, NULL, NULL)""")
+    db.commit()
+
+    # CREATE GAMES
+    game_id = 0
+    for i in range(7):
+        cur.execute(f"INSERT INTO games (id, m_id, p1_score, p2_score) VALUES ({game_id}, 0, 0, 0)")
+        game_id += 1
+    for i in range(7):
+        cur.execute(f"INSERT INTO games (id, m_id, p1_score, p2_score) VALUES ({game_id}, 1, 0, 0)")
+        game_id += 1
+    for i in range(7):
+        cur.execute(f"INSERT INTO games (id, m_id, p1_score, p2_score) VALUES ({game_id}, 2, 0, 0)")
+        game_id += 1
+    db.commit()
+
+    # CREATE BINARY TREE ENTRY
+    cur.execute("INSERT INTO match_tree (parent_id, l_child_id, r_child_id) VALUES (2, 0, 1)")
+    db.commit()
+          
+def create_test_tournament(t_id : int, players : int):
+    """
+    global db
+
+    cur = db.cursor()
+
+    # CREATE TEST TOURNEMENT
+    cur.execute("INSERT INTO tournaments (id, name, date) VALUES (?, ?, DATE('now'))",
+                (t_id, f"TestTournament{t_id}")) # Values in a tuple
+    db.commit()
+
+    # CREATE TEST PLAYERS
+    for i in range(players):
+        cur.execute(f"INSERT INTO players (id, name, skill) VALUES (?, ?, 0)",
+                    (i, f"TestPlayer{i}"))
+        db.commit()
+    """
+    # CREATE TEST MATCHES
+    t = players
+    num_matches = players % 2
+    while t > 0:
+        t //= 2;
+        num_matches += t
+        if t > 1:
+            num_matches += t % 2
+
+    print(num_matches)
+    quit()
+
 def init():
     global db
     db = sqlite3.connect("rppcs_data.db")
@@ -90,7 +159,8 @@ def init():
                                                       p1_id   INT UNSIGNED,
                                                       p2_id   INT UNSIGNED,
                                                       FOREIGN KEY (t_id) REFERENCES tournaments(id),
-                                                      FOREIGN KEY (p1_id, p2_id) REFERENCES players(id, id) ON DELETE SET NULL)""")
+                                                      FOREIGN KEY (p1_id) REFERENCES players(id) ON DELETE SET NULL,
+                                                      FOREIGN KEY (p2_id) REFERENCES players(id) ON DELETE SET NULL)""")
     db.commit()
     
     # Game table
@@ -104,8 +174,9 @@ def init():
     cur.execute("""CREATE TABLE IF NOT EXISTS match_tree(parent_id      INT UNSIGNED NOT NULL PRIMARY KEY,
                                                          l_child_id     INT UNSIGNED NOT NULL,
                                                          r_child_id     INT UNSIGNED NOT NULL,
-                                                         FOREIGN KEY (parent_id, l_child_id, r_child_id) REFERENCES matches(id, id, id)
-                                                         ON DELETE CASCADE)""")
+                                                         FOREIGN KEY (parent_id) REFERENCES matches(id) ON DELETE CASCADE,
+                                                         FOREIGN KEY (l_child_id) REFERENCES matches(id) ON DELETE CASCADE,
+                                                         FOREIGN KEY (r_child_id) REFERENCES matches(id) ON DELETE CASCADE)""")
     db.commit()
     
     # Insert the null player into the players table if necessary.
@@ -119,6 +190,7 @@ def init():
     
 if __name__ == "__main__":
     init() # Set up database if necessary.
+    create_debug_testing_data()
     
     # This runs the protocol on port 8000
     factory = protocol.ServerFactory() # Basic server factory.
