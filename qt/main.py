@@ -1,6 +1,7 @@
 import sys
 import random
 import threading
+from PySide6 import QtCore
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import *
 from PySide6.QtGui import *
@@ -16,6 +17,8 @@ PORT = 8000
 # Global Objects
 simple_client = None
 connection_failed = False
+database = None
+
 
 def close_connection():
     simple_client.transport.loseConnection()
@@ -38,6 +41,11 @@ class RPPCS_Main(QMainWindow):
             if connection_failed:
                 print("Error connecting to server program.")
                 quit()
+        # Get database info
+        reactor.callFromThread(fetchall)
+        while database is None:
+            pass
+        print(database)
         
         global WIN_X, WIN_Y
 
@@ -90,11 +98,21 @@ class RPPCS_Main(QMainWindow):
         reactor.callFromThread(fetchall)
 
     def set_central_widget_tournaments(self):
-        # Set the window's central widget to be the tournament editor widget.
-        label = QLabel("Tournament Editor Mode")
-        label.setAlignment(Qt.AlignCenter)
-        self.setCentralWidget(label)
+        # Set the window's central widget to be the tournament editor widget
+        self.gv = QGraphicsView()
+        self.gs = QGraphicsScene()
+    
+        self.gv.setSceneRect(0, 0, 800, 600)
+
+        pos_x = 50
+        pos_y = 20
         
+        for x in range(10):
+            self.gv.setScene(self.gs) 
+            self.gs.addRect(QtCore.QRectF(pos_x, pos_y, 100, 30))
+            self.setCentralWidget(self.gv)
+            pos_y = pos_y + 60
+            
     def set_central_widget_players(self):
         # Set the window's central widget to be the tournament editor widget.
         label = QLabel("Player Management Mode")
@@ -119,8 +137,8 @@ class SimpleClient(protocol.Protocol):
         simple_client = self
 
     def dataReceived(self, data):
-        # As soon as any data is received, print it.
-        print("Server said:", data.decode())
+        global database
+        database = eval(data.decode())
 
     def connectionLost(self, reason):
         global simple_client
