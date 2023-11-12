@@ -13,7 +13,7 @@ ret["GT"] = [G]ame [T]able dictionary
 ret["PT"] = [P]layer [T]able dictionary
 ret["BT"] = match [B]inary [T]ree table dictionary
 
-ret["TT"][id] = [ name, date ]
+ret["TT"][id] = [ name, numplayers, date ]
 ret["MT"][id] = [ t_id, p1_id, p2_id ]
 ret["GT"][id] = [ m_id, p1_score, p2_score ]
 ret["PT"][id] = [ name, skill ]
@@ -70,8 +70,8 @@ def create_debug_testing_data():
     cur = db.cursor()
 
     # CREATE TEST TOURNEMENT
-    cur.execute("INSERT INTO tournaments (id, name, date) VALUES (?, ?, DATE('now'))",
-                (0, "TestTournament0")) # Values in a tuple
+    cur.execute("INSERT INTO tournaments (id, name, numplayers, date) VALUES (?, ?, ?, DATE('now'))",
+                (0, "TestTournament0", 4)) # Values in a tuple
     db.commit()
 
     # CREATE TEST PLAYERS
@@ -142,9 +142,10 @@ def init():
     db.commit()
     
     # Tournament table
-    cur.execute("""CREATE TABLE IF NOT EXISTS tournaments(id     INT UNSIGNED NOT NULL PRIMARY KEY,
-                                                          name   TEXT NOT NULL,
-                                                          date   DATE NOT NULL)""")
+    cur.execute("""CREATE TABLE IF NOT EXISTS tournaments(id         INT UNSIGNED NOT NULL PRIMARY KEY,
+                                                          name       TEXT NOT NULL,
+                                                          numplayers INT UNSIGNED NOT NULL,
+                                                          date       DATE NOT NULL)""")
 
     # Player table
     cur.execute("""CREATE TABLE IF NOT EXISTS players(id      INT UNSIGNED PRIMARY KEY,

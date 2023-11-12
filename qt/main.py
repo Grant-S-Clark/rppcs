@@ -41,6 +41,12 @@ def tournament_player_id_list(t_id):
 
     return ret
 
+def player_name_to_id(name):
+    for p_id in database["PT"]:
+        if database["PT"][p_id][0] == name:
+            return p_id
+    return None
+
 class PlayerToolBox(QToolBox):
     def __init__(self, parent, p_rect, t_id):
         super().__init__(parent = parent)
@@ -53,10 +59,13 @@ class PlayerToolBox(QToolBox):
             if p_id == p_rect.p_id:
                 current_index = i
         self.selection_box.setCurrentIndex(current_index)
-            
-        
         
         self.addItem(self.selection_box, "Select Player")
+
+        self.selection_box.currentTextChanged.connect(self.selection_changed)
+
+    def selection_changed(self, text):
+        self.p_rect.set_player(player_name_to_id(text))
 
 
 # Class for rectangles associated with players in a tournament.
@@ -77,7 +86,7 @@ class PlayerRect:
         self.text = self.gs.addText(self.name)
         self.text.setPos(self.x, self.y)
 
-    def set_player(p_id):
+    def set_player(self, p_id):
         self.p_id = p_id
         self.name = database["PT"][self.p_id][0]
         self.text.setPlainText(self.name)
@@ -118,10 +127,10 @@ class TournamentWidget(QWidget):
         self.setLayout(QHBoxLayout())
         self.layout = self.layout()
 
-        self.__setup_graphics()
-        self.__setup_tournament_toolbox()
+        self.setup_graphics()
+        self.setup_tournament_toolbox()
 
-    def __setup_graphics(self):
+    def setup_graphics(self):
         # Create the widgets
         self.gv = QGraphicsView()
         self.gs = TournamentGraphicsScene(self)
@@ -149,7 +158,7 @@ class TournamentWidget(QWidget):
         # Widget 0 has stretch factor of 4.
         self.layout.setStretch(0, 4)
 
-    def __setup_tournament_toolbox(self):
+    def setup_tournament_toolbox(self):
         self.tb = QToolBox()
         self.tb.addItem(QLabel("Test Item"), "Test Category")
         self.layout.addWidget(self.tb)
