@@ -9,7 +9,7 @@ from twisted.internet import protocol, reactor
 
 # Gloal constants
 
-WIN_X = 800
+WIN_X = 1000
 WIN_Y = 600
 
 PORT = 8000
@@ -19,6 +19,7 @@ app = None
 simple_client = None
 connection_failed = False
 database = None
+current_tournament_id = None
 
 # Networking functions.
 def close_connection():
@@ -41,6 +42,12 @@ def tournament_player_id_list(t_id):
 
     return ret
 
+def tournament_name_to_id(name):
+    for t_id in database["TT"]:
+        if database["TT"][t_id][0] == name:
+            return t_id
+    return None
+
 def player_name_to_id(name):
     for p_id in database["PT"]:
         if database["PT"][p_id][0] == name:
@@ -54,10 +61,11 @@ class PlayerToolBox(QToolBox):
         self.t_id = t_id
         self.selection_box = QComboBox()
         current_index = 0
-        for i, p_id in enumerate(tournament_player_id_list(self.t_id)):
+        for i, p_id in enumerate(database["PT"]):
             self.selection_box.addItem(database["PT"][p_id][0])
             if p_id == p_rect.p_id:
                 current_index = i
+                
         self.selection_box.setCurrentIndex(current_index)
         
         self.addItem(self.selection_box, "Select Player")
@@ -66,6 +74,30 @@ class PlayerToolBox(QToolBox):
 
     def selection_changed(self, text):
         self.p_rect.set_player(player_name_to_id(text))
+
+class TournamentToolBox(QToolBox):
+    def __init__(self, parent, t_id):
+        super().__init__(parent = parent)
+        self.t_id = t_id
+        self.selection_box = QComboBox()
+        current_index = 0
+        self.selection_box.addItem("None")
+        for i, t_id in enumerate(database["TT"]):
+            self.selection_box.addItem(database["TT"][t_id][0])
+            if t_id == self.t_id:
+                current_index = i + 1
+        
+        self.selection_box.setCurrentIndex(current_index)
+        
+        self.addItem(self.selection_box, "Select Tournament")
+
+        self.selection_box.currentTextChanged.connect(self.selection_changed)
+
+    def selection_changed(self, text):
+        global current_tournament_id
+        current_tournament_id = tournament_name_to_id(text)
+        self.t_id = current_tournament_id
+        self.parent().update_tournament()
 
 
 # Class for rectangles associated with players in a tournament.
@@ -123,6 +155,7 @@ class TournamentGraphicsScene(QGraphicsScene):
 class TournamentWidget(QWidget):
     def __init__(self, parent, t_id):
         super().__init__(parent=parent)
+        self.gv = None
         self.t_id = t_id
         self.setLayout(QHBoxLayout())
         self.layout = self.layout()
@@ -132,35 +165,40 @@ class TournamentWidget(QWidget):
 
     def setup_graphics(self):
         # Create the widgets
+        prev = self.gv
         self.gv = QGraphicsView()
         self.gs = TournamentGraphicsScene(self)
 
         # Set the viewing scene
         self.gv.setSceneRect(0, 0, 800, 800)
         self.gv.setScene(self.gs)
-        
-        self.player_rects = list()
-        # Add rectangles
-        pos_x = 50
-        pos_y = 20
-        for i, p_id in enumerate(tournament_player_id_list(self.t_id)):
-            self.player_rects.append(PlayerRect(pos_x, pos_y + i * 60, 100, 30, p_id, self.gs))
 
-        self.gs.set_player_rects(self.player_rects)
-        for p_rect in self.player_rects:
-            p_rect.add_to_scene()
+        if self.t_id != None:
+            self.player_rects = list()
+            # Add rectangles
+            pos_x = 50
+            pos_y = 20
+            for i, p_id in enumerate(tournament_player_id_list(self.t_id)):
+                self.player_rects.append(PlayerRect(pos_x, pos_y + i * 60, 100, 30, p_id, self.gs))
+
+            self.gs.set_player_rects(self.player_rects)
+            for p_rect in self.player_rects:
+                p_rect.add_to_scene()
 
         # Set scroll bars to be at top right corner of scene.
         self.gv.centerOn(0, 0)
-        
-        # Add the view to the layout
-        self.layout.addWidget(self.gv)
-        # Widget 0 has stretch factor of 4.
-        self.layout.setStretch(0, 4)
+
+        if prev is None:
+            # Add the view to the layout
+            self.layout.addWidget(self.gv)
+            # Widget 0 has stretch factor of 4.
+            self.layout.setStretch(0, 4)
+        else:
+            self.layout.replaceWidget(prev, self.gv)
+            prev.close()
 
     def setup_tournament_toolbox(self):
-        self.tb = QToolBox()
-        self.tb.addItem(QLabel("Test Item"), "Test Category")
+        self.tb = TournamentToolBox(self, self.t_id)
         self.layout.addWidget(self.tb)
         # Widget 1 has stretch factor of 1.
         self.layout.setStretch(1, 1)
@@ -168,15 +206,25 @@ class TournamentWidget(QWidget):
     def mousePressEvent(self, event):
         # Event happened in graphics scene, check to see if we need
         # to change the toolbox.        if self.gs.is_clicked:
-            if isinstance(self.gs.selected, PlayerRect):
-                prev = self.tb
-                self.tb = PlayerToolBox(self, self.gs.selected, self.t_id)
-                self.layout.replaceWidget(prev, self.tb)
-                prev.close()
-                
+        if isinstance(self.gs.selected, PlayerRect):
+            prev = self.tb
+            self.tb = PlayerToolBox(self, self.gs.selected, self.t_id)
+            self.layout.replaceWidget(prev, self.tb)
+            prev.close()
+
+        else:
+            prev = self.tb
+            self.tb = TournamentToolBox(self, current_tournament_id)
+            self.layout.replaceWidget(prev, self.tb)
+            prev.close()
+            
         # Also check to see if the event occurred in the currently
         # active toolbox and respond accordingly.
-            
+
+    def update_tournament(self):
+        if current_tournament_id != self.t_id or True:
+            self.t_id = current_tournament_id
+            self.setup_graphics()
     
 # Class for the main window of the program.
 class RPPCS_Main(QMainWindow):
@@ -255,7 +303,7 @@ class RPPCS_Main(QMainWindow):
     def set_central_widget_tournaments(self):
         # Set the window's central widget to be the tournament editor widget
         # Parent is the main window, tournament id is zero.
-        self.t_widget = TournamentWidget(parent = self, t_id = 0)
+        self.t_widget = TournamentWidget(parent = self, t_id = current_tournament_id)
         self.setCentralWidget(self.t_widget)
             
     def set_central_widget_players(self):
