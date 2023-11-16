@@ -101,6 +101,44 @@ class TournamentToolBox(QToolBox):
 
 
 # Class for rectangles associated with players in a tournament.
+class MatchRect:
+    def __init__(self,
+                 x, y, w, h,
+                 m_id, graphics_scene,
+                 p1_rect = None, p2_rect = None):
+        # If the player rects are None, then this match is on the
+        # binary tree and the players need to be grabbed from
+        # the matches it originates from.
+        
+        self.x = x
+        self.y = y
+        self.w = w
+        self.h = h
+        self.gs = graphics_scene
+        self.m_id = m_id
+        self.p1_rect = p1_rect
+        self.p2_rect = p2_rect
+        
+        self.p1_id = database["MT"][self.m_id][1]
+        self.p2_id = database["MT"][self.m_id][2]
+
+    def add_to_scene(self):
+        self.rect = self.gs.addRect(QtCore.QRectF(self.x, self.y, self.w, self.h))
+        string = database["PT"][self.p1_id][0] + " V.S. " + database["PT"][self.p2_id][0]
+        self.text = self.gs.addText(string)
+        self.text.setPos(self.x, self.y)
+
+    def set_player1(self, p_id):
+        self.p1_id = p_id
+        string = database["PT"][self.p1_id][0] + " V.S. " + database["PT"][self.p2_id][0]
+        self.text.setPlainText(string)
+
+    def set_player2(self, p_id):
+        self.p2_id = p_id
+        string = database["PT"][self.p1_id][0] + " V.S. " + database["PT"][self.p2_id][0]
+        self.text.setPlainText(string)
+
+# Class for rectangles associated with players in a tournament.
 class PlayerRect:
     def __init__(self,
                  x, y, w, h,
@@ -137,10 +175,11 @@ class TournamentGraphicsScene(QGraphicsScene):
     def mousePressEvent(self, event):
         self.selected = None
         self.is_clicked = True
-        for p_rect in self.p_rects:
-            if p_rect.rect.contains(event.scenePos()):
-                self.selected = p_rect
-                break
+        if self.p_rects is not None:
+            for p_rect in self.p_rects:
+                if p_rect.rect.contains(event.scenePos()):
+                    self.selected = p_rect
+                    break
 
         app.sendEvent(self.parent(), event)
 
@@ -174,17 +213,22 @@ class TournamentWidget(QWidget):
         self.gv.setScene(self.gs)
 
         if self.t_id != None:
+            # Add player rectangles
             self.player_rects = list()
-            # Add rectangles
             pos_x = 50
             pos_y = 20
+            w = 100
+            h = 30
             for i, p_id in enumerate(tournament_player_id_list(self.t_id)):
-                self.player_rects.append(PlayerRect(pos_x, pos_y + i * 60, 100, 30, p_id, self.gs))
+                self.player_rects.append(PlayerRect(pos_x, pos_y + i * 60, w, h, p_id, self.gs))
 
             self.gs.set_player_rects(self.player_rects)
             for p_rect in self.player_rects:
                 p_rect.add_to_scene()
 
+            # Add match rectangles.
+            self.match_rects = list()
+            
         # Set scroll bars to be at top right corner of scene.
         self.gv.centerOn(0, 0)
 
