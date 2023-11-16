@@ -69,6 +69,7 @@ class PlayerToolBox(QToolBox):
         self.p_rect = p_rect
         self.t_id = t_id
         self.selection_box = QComboBox()
+        self.m_rect = None # match rectangle this player is associated with.
         current_index = 0
         for i, p_id in enumerate(database["PT"]):
             self.selection_box.addItem(database["PT"][p_id][0])
@@ -83,6 +84,9 @@ class PlayerToolBox(QToolBox):
 
     def selection_changed(self, text):
         self.p_rect.set_player(player_name_to_id(text))
+
+# END class PlayerToolBox
+    
 
 class MatchToolBox(QToolBox):
     def __init__(self, parent, m_rect, t_id):
@@ -122,6 +126,9 @@ class MatchToolBox(QToolBox):
         self.addItem(self.p1_select, "Select Player 1")
         self.addItem(self.p2_select, "Select Player 2")
 
+        self.p1_select.currentTextChanged.connect(self.p1_selection_changed)
+        self.p2_select.currentTextChanged.connect(self.p2_selection_changed)
+
         # REMEMBER TO HANDLE INDEX CHANGE EVENTS!!!!!
 
     def __get_binary_tree_left_child_player_ids(self):
@@ -141,6 +148,11 @@ class MatchToolBox(QToolBox):
         ret.append(database["MT"][rchild][2])
         
         return ret
+
+    def p1_selection_changed(self, text):
+        self.m_rect.set_player1(player_name_to_id(text))
+    def p2_selection_changed(self, text):
+        self.m_rect.set_player2(player_name_to_id(text))
     
     # END class MatchToolBox
 
@@ -219,6 +231,7 @@ class PlayerRect:
         self.gs = graphics_scene
         self.p_id = p_id
         self.name = database["PT"][self.p_id][0]
+        self.m_rect = None # match rectangle this player is associated with.
 
     def add_to_scene(self):
         self.rect = self.gs.addRect(QtCore.QRectF(self.x, self.y, self.w, self.h))
@@ -226,9 +239,22 @@ class PlayerRect:
         self.text.setPos(self.x, self.y)
 
     def set_player(self, p_id):
-        self.p_id = p_id
-        self.name = database["PT"][self.p_id][0]
-        self.text.setPlainText(self.name)
+        # Only perform changes if necessary
+        if p_id != self.p_id:
+            old = self.p_id
+            self.p_id = p_id
+            self.name = database["PT"][self.p_id][0]
+            self.text.setPlainText(self.name)
+            # Edit the match player selection list.
+            if self.m_rect.p1_id == old:
+                self.m_rect.set_player1(p_id)
+            else:
+                self.m_rect.set_player2(p_id)
+
+    def set_match_rect(self, m_rect):
+        self.m_rect = m_rect
+
+# END class PlayerRect
 
 class TournamentGraphicsScene(QGraphicsScene):
     def __init__(self, parent):
@@ -325,6 +351,8 @@ class TournamentWidget(QWidget):
                                                       w, h, m_id, self.gs,
                                                       self.player_rects[i * 2],
                                                       self.player_rects[i * 2 + 1]))
+                    self.player_rects[i * 2].set_match_rect(self.match_rects[-1])
+                    self.player_rects[i * 2].set_match_rect(self.match_rects[-1])
                 else:
                     self.match_rects.append(MatchRect(pos_x, pos_y,
                                                       w, h, m_id, self.gs))
