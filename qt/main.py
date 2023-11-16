@@ -225,7 +225,67 @@ class TournamentWidget(QWidget):
         if current_tournament_id != self.t_id or True:
             self.t_id = current_tournament_id
             self.setup_graphics()
-    
+
+# Trying some codes for Player Widget
+
+
+class PlayersWidget(QWidget):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.setLayout(QHBoxLayout())
+
+        # Left Widget - List of Players
+        self.list_widget = QListWidget()
+        self.list_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.layout().addWidget(self.list_widget, 1.5)  # Set stretch factor to 1
+
+        # Populate the list widget with player names
+        for p_id in database["PT"]:
+            player_name = database["PT"][p_id][0]
+            self.list_widget.addItem(player_name)
+
+        # Connect the itemClicked signal to the on_item_clicked method
+        self.list_widget.itemClicked.connect(self.on_item_clicked)
+
+        # Right Widget - Buttons for Actions
+        self.actions_widget = QWidget()
+        self.actions_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.layout().addWidget(self.actions_widget, 1.5)  # Set stretch factor to 2
+
+        self.actions_widget.setLayout(QVBoxLayout())
+
+        # Add buttons for actions
+        self.change_name_button = QPushButton("Change Name")
+        self.edit_button = QPushButton("Edit")
+        self.get_id_button = QPushButton("Get ID")
+
+        # Connect button signals to methods
+        self.change_name_button.clicked.connect(self.change_name)
+        self.edit_button.clicked.connect(self.edit_player)
+        self.get_id_button.clicked.connect(self.get_id)
+        
+        # Add buttons to the layout
+        self.actions_widget.layout().addWidget(self.change_name_button)
+        self.actions_widget.layout().addWidget(self.edit_button)
+        self.actions_widget.layout().addWidget(self.get_id_button)
+        
+    def on_item_clicked(self, item):
+        player_name = item.text()
+        # Do something with the selected player, e.g., update the buttons
+        print(f"Selected player: {player_name}")
+
+    def change_name(self):
+        # Implement the action when the "Change Name" button is clicked
+        print("Change Name button clicked")
+
+    def edit_player(self):
+        # Implement the action when the "Edit" button is clicked
+        print("Edit button clicked")
+
+    def get_id(self):
+        print("Get ID button clicked")
+
+
 # Class for the main window of the program.
 class RPPCS_Main(QMainWindow):
     def __init__(self):
@@ -317,6 +377,12 @@ class RPPCS_Main(QMainWindow):
         label = QLabel("Settings Mode (TBD)")
         label.setAlignment(Qt.AlignCenter)
         self.setCentralWidget(label)
+
+    def set_central_widget_players(self):
+    # Set the window's central widget to be the player editor widget.
+        self.p_widget = PlayersWidget(parent=self)
+        self.setCentralWidget(self.p_widget)
+        self.p_widget.show()
         
 # END class RPPCS_Main
 
