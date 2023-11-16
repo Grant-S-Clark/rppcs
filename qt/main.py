@@ -42,6 +42,15 @@ def tournament_player_id_list(t_id):
 
     return ret
 
+def tournament_match_id_list(t_id):
+    ret = list()
+
+    for m_id in database["MT"]:
+        if database["MT"][m_id][0] == t_id:
+            ret.append(m_id)
+    
+    return ret
+
 def tournament_name_to_id(name):
     for t_id in database["TT"]:
         if database["TT"][t_id][0] == name:
@@ -74,6 +83,66 @@ class PlayerToolBox(QToolBox):
 
     def selection_changed(self, text):
         self.p_rect.set_player(player_name_to_id(text))
+
+class MatchToolBox(QToolBox):
+    def __init__(self, parent, m_rect, t_id):
+        super().__init__(parent = parent)
+        self.m_rect = m_rect
+        self.t_id = t_id
+        self.p1_select = QComboBox()
+        self.p2_select = QComboBox()
+        
+        # Allow for only selection of players from
+        # children matches.
+        if self.m_rect.m_id in database["BT"]:
+            p1_index = 0
+            p2_index = 0
+            l_player_ids = self.__get_binary_tree_left_child_player_ids()
+            for i, p_id in enumerate(l_player_ids):
+                self.p1_select.addItem(database["PT"][p_id][0])
+                if p_id == self.m_rect.p1_id:
+                    p1_index = i
+            r_player_ids = self.__get_binary_tree_right_child_player_ids()
+            for i, p_id in enumerate(r_player_ids):
+                self.p2_select.addItem(database["PT"][p_id][0])
+                if p_id == self.m_rect.p2_id:
+                    p2_index = i
+            self.p1_select.setCurrentIndex(p1_index)
+            self.p2_select.setCurrentIndex(p2_index)
+            
+        # Do not allow for selection of players, they are
+        # set by the player_rects that are associated with this
+        # match rectangle.
+        else:
+            self.p1_select.addItem(database["PT"][self.m_rect.p1_rect.p_id][0])
+            self.p2_select.addItem(database["PT"][self.m_rect.p2_rect.p_id][0])
+            self.p1_select.setEditable(False)
+            self.p2_select.setEditable(False)
+
+        self.addItem(self.p1_select, "Select Player 1")
+        self.addItem(self.p2_select, "Select Player 2")
+
+        # REMEMBER TO HANDLE INDEX CHANGE EVENTS!!!!!
+
+    def __get_binary_tree_left_child_player_ids(self):
+        ret = list()
+        ret.append(None) # Always allow for selection of null player.
+        lchild = database["BT"][self.m_rect.m_id][0] # left child id
+        ret.append(database["MT"][lchild][1])
+        ret.append(database["MT"][lchild][2])
+        
+        return ret
+
+    def __get_binary_tree_right_child_player_ids(self):
+        ret = list()
+        ret.append(None) # Always allow for selection of null player.
+        rchild = database["BT"][self.m_rect.m_id][1] # right child id
+        ret.append(database["MT"][rchild][1])
+        ret.append(database["MT"][rchild][2])
+        
+        return ret
+    
+    # END class MatchToolBox
 
 class TournamentToolBox(QToolBox):
     def __init__(self, parent, t_id):
@@ -166,11 +235,15 @@ class TournamentGraphicsScene(QGraphicsScene):
         super().__init__(parent = parent)
         #self.setAcceptedMouseButtons(Qt.LeftButton)
         self.p_rects = None
+        self.m_rects = None
         self.is_clicked = False
         self.selected = None
         
     def set_player_rects(self, p_rects):
         self.p_rects = p_rects
+
+    def set_match_rects(self, m_rects):
+        self.m_rects = m_rects
 
     def mousePressEvent(self, event):
         self.selected = None
@@ -180,6 +253,13 @@ class TournamentGraphicsScene(QGraphicsScene):
                 if p_rect.rect.contains(event.scenePos()):
                     self.selected = p_rect
                     break
+            
+            # if player rects exist, the match rects also exist.
+            if self.selected is None:
+                for m_rect in self.m_rects:
+                    if m_rect.rect.contains(event.scenePos()):
+                        self.selected = m_rect
+                        break
 
         app.sendEvent(self.parent(), event)
 
@@ -228,6 +308,39 @@ class TournamentWidget(QWidget):
 
             # Add match rectangles.
             self.match_rects = list()
+            pos_x += w + 40
+            start_y = 20 + h # starting position of player rects plus the height of the rects.
+            pos_y = start_y
+            w += 120
+            # Height (h) remains 30.
+            n = len(self.player_rects) // 2
+            first_matches = True
+            print("DEBUG DATA IN setup_graphics():")
+            print("num_matches =", len(tournament_match_id_list(self.t_id)))
+            print("num_players =", len(self.player_rects))
+            print("n =", n)
+            for i, m_id in enumerate(tournament_match_id_list(self.t_id)):
+                if (first_matches):
+                    self.match_rects.append(MatchRect(pos_x, pos_y,
+                                                      w, h, m_id, self.gs,
+                                                      self.player_rects[i * 2],
+                                                      self.player_rects[i * 2 + 1]))
+                else:
+                    self.match_rects.append(MatchRect(pos_x, pos_y,
+                                                      w, h, m_id, self.gs))
+                if (i == n - 1):
+                    pos_x += w + 40
+                    start_y += 60
+                    pos_y = start_y
+                    n = round(n / 2)
+                    first_matches = False
+                else:
+                    pos_y += 120 # move down two rectangles 
+
+            self.gs.set_match_rects(self.match_rects)
+            for m_rect in self.match_rects:
+                m_rect.add_to_scene()
+
             
         # Set scroll bars to be at top right corner of scene.
         self.gv.centerOn(0, 0)
@@ -253,6 +366,12 @@ class TournamentWidget(QWidget):
         if isinstance(self.gs.selected, PlayerRect):
             prev = self.tb
             self.tb = PlayerToolBox(self, self.gs.selected, self.t_id)
+            self.layout.replaceWidget(prev, self.tb)
+            prev.close()
+
+        elif isinstance(self.gs.selected, MatchRect):
+            prev = self.tb
+            self.tb = MatchToolBox(self, self.gs.selected, self.t_id)
             self.layout.replaceWidget(prev, self.tb)
             prev.close()
 
