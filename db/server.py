@@ -62,7 +62,15 @@ class SimpleServer(protocol.Protocol):
     def dataReceived(self, data):
         # Process inputs, get outputs.
         "As soon as any data is received, write it back."
-        self.transport.write(str(fetchall()).encode())
+        s = data.decode()
+        if s == "fetchall":
+            self.transport.write(str(fetchall()).encode())
+        else:
+            # This means it will be a database instruction.
+            cur = db.cursor()
+            cur.execute(s)
+            db.commit()
+            print("PROCESSED:", s)
 
 def create_debug_testing_data():
     global db

@@ -26,6 +26,8 @@ def close_connection():
     simple_client.transport.loseConnection()
 def fetchall():
     simple_client.transport.write(b"fetchall")
+def db_instruction(ins):
+    simple_client.transport.write(ins.encode())
 
 
 # Functions for fetching information from the database dictionary
@@ -86,7 +88,72 @@ class PlayerToolBox(QToolBox):
         self.p_rect.set_player(player_name_to_id(text))
 
 # END class PlayerToolBox
-    
+
+class GameWidget(QWidget):
+    def __init__(self, parent, g_id):
+        super().__init__(parent = parent)
+        self.g_id = g_id
+        self.p1_score = database["GT"][self.g_id][1]
+        self.p2_score = database["GT"][self.g_id][2]
+        self.setLayout(QGridLayout())
+        self.layout = self.layout()
+        self.p1_label = QLabel(f"P1 Score: {self.p1_score}", self)
+        self.p2_label = QLabel(f"P2 Score: {self.p2_score}", self)
+        self.p1_plus = QPushButton("+", self)
+        self.p2_plus = QPushButton("+", self)
+        self.p1_minus = QPushButton("-", self)
+        self.p2_minus = QPushButton("-", self)
+
+        self.p1_plus.clicked.connect(self.p1_plus_pressed)
+        self.p2_plus.clicked.connect(self.p2_plus_pressed)
+        self.p1_minus.clicked.connect(self.p1_minus_pressed)
+        self.p2_minus.clicked.connect(self.p2_minus_pressed)
+        
+        self.layout.addWidget(self.p1_label, 0, 0)
+        self.layout.addWidget(self.p1_plus, 1, 0)
+        self.layout.addWidget(self.p1_minus, 1, 1)
+        
+        self.layout.addWidget(self.p2_label, 2, 0)
+        self.layout.addWidget(self.p2_plus, 3, 0)
+        self.layout.addWidget(self.p2_minus, 3, 1)
+
+    def p1_plus_pressed(self):
+        if self.p1_score == 11:
+            return
+        self.p1_score += 1
+        database["GT"][self.g_id][1] += 1
+        ins = f"UPDATE games SET p1_score = {self.p1_score} WHERE id = {self.g_id}"
+        reactor.callFromThread(db_instruction, ins)
+        self.p1_label.setText(f"P1 Score: {self.p1_score}")
+        
+    def p2_plus_pressed(self):
+        if self.p2_score == 11:
+            return
+        self.p2_score += 1
+        database["GT"][self.g_id][2] += 1
+        ins = f"UPDATE games SET p2_score = {self.p2_score} WHERE id = {self.g_id}"
+        reactor.callFromThread(db_instruction, ins)
+        self.p2_label.setText(f"P2 Score: {self.p2_score}")
+        
+    def p1_minus_pressed(self):
+        if self.p1_score == 0:
+            return
+        self.p1_score -= 1
+        database["GT"][self.g_id][1] -= 1
+        ins = f"UPDATE games SET p1_score = {self.p1_score} WHERE id = {self.g_id}"
+        reactor.callFromThread(db_instruction, ins)
+        self.p1_label.setText(f"P1 Score: {self.p1_score}")
+        
+    def p2_minus_pressed(self):
+        if self.p2_score == 0:
+            return
+        self.p2_score -= 1
+        database["GT"][self.g_id][2] -= 1
+        ins = f"UPDATE games SET p2_score = {self.p2_score} WHERE id = {self.g_id}"
+        reactor.callFromThread(db_instruction, ins)
+        self.p2_label.setText(f"P2 Score: {self.p2_score}")
+
+# END class GameWidget
 
 class MatchToolBox(QToolBox):
     def __init__(self, parent, m_rect, t_id):
@@ -129,7 +196,18 @@ class MatchToolBox(QToolBox):
         self.p1_select.currentTextChanged.connect(self.p1_selection_changed)
         self.p2_select.currentTextChanged.connect(self.p2_selection_changed)
 
-        # REMEMBER TO HANDLE INDEX CHANGE EVENTS!!!!!
+        # Set up the 7 game tabs with their respective widgets.
+        game_ids = list()
+        for g_id in database["GT"]:
+            if self.m_rect.m_id == database["GT"][g_id][0]:
+                game_ids.append(g_id)
+
+        self.game_tabs = list()
+        for g_id in game_ids:
+            self.game_tabs.append(GameWidget(self, g_id))
+
+        for i, g_widget in enumerate(self.game_tabs):
+            self.addItem(g_widget, f"Game {i + 1}")
 
     def __get_binary_tree_left_child_player_ids(self):
         ret = list()
@@ -211,11 +289,15 @@ class MatchRect:
 
     def set_player1(self, p_id):
         self.p1_id = p_id
+        ins = f"UPDATE matches SET p1_id = {p_id} WHERE id = {self.m_id}"
+        reactor.callFromThread(db_instruction, ins)
         string = database["PT"][self.p1_id][0] + " V.S. " + database["PT"][self.p2_id][0]
         self.text.setPlainText(string)
 
     def set_player2(self, p_id):
         self.p2_id = p_id
+        ins = f"UPDATE matches SET p2_id = {p_id} WHERE id = {self.m_id}"
+        reactor.callFromThread(db_instruction, ins)
         string = database["PT"][self.p1_id][0] + " V.S. " + database["PT"][self.p2_id][0]
         self.text.setPlainText(string)
 
@@ -250,6 +332,7 @@ class PlayerRect:
                 self.m_rect.set_player1(p_id)
             else:
                 self.m_rect.set_player2(p_id)
+            
 
     def set_match_rect(self, m_rect):
         self.m_rect = m_rect
@@ -352,7 +435,7 @@ class TournamentWidget(QWidget):
                                                       self.player_rects[i * 2],
                                                       self.player_rects[i * 2 + 1]))
                     self.player_rects[i * 2].set_match_rect(self.match_rects[-1])
-                    self.player_rects[i * 2].set_match_rect(self.match_rects[-1])
+                    self.player_rects[i * 2 + 1].set_match_rect(self.match_rects[-1])
                 else:
                     self.match_rects.append(MatchRect(pos_x, pos_y,
                                                       w, h, m_id, self.gs))
@@ -490,7 +573,7 @@ class RPPCS_Main(QMainWindow):
 
     def test(self):
         reactor.callFromThread(fetchall)
-
+        
     def set_central_widget_tournaments(self):
         # Set the window's central widget to be the tournament editor widget
         # Parent is the main window, tournament id is zero.
@@ -522,7 +605,11 @@ class SimpleClient(protocol.Protocol):
 
     def dataReceived(self, data):
         global database
-        database = eval(data.decode())
+        if database is None:
+            database = eval(data.decode())
+        else:
+            print(data.decode())
+            print()
 
     def connectionLost(self, reason):
         global simple_client
