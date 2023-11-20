@@ -52,26 +52,6 @@ def fetchall():
     
     return ret
 
-class SimpleServer(protocol.Protocol):
-    def connectionMade(self):
-        print("Client has connected to the server.")
-
-    def connectionLost(self, reason):
-        print ("Lost connection with client.")
-        
-    def dataReceived(self, data):
-        # Process inputs, get outputs.
-        "As soon as any data is received, write it back."
-        s = data.decode()
-        if s == "fetchall":
-            self.transport.write(str(fetchall()).encode())
-        else:
-            # This means it will be a database instruction.
-            cur = db.cursor()
-            cur.execute(s)
-            db.commit()
-            print("PROCESSED:", s)
-
 def create_debug_testing_data():
     global db
 
@@ -113,7 +93,7 @@ def create_debug_testing_data():
     cur.execute("INSERT INTO match_tree (parent_id, l_child_id, r_child_id) VALUES (2, 0, 1)")
     db.commit()
           
-def create_test_tournament(t_id : int, players : int):
+def create_tournament(t_id : int, name : str, players : int):
     """
     global db
 
@@ -130,6 +110,7 @@ def create_test_tournament(t_id : int, players : int):
                     (i, f"TestPlayer{i}"))
         db.commit()
     """
+    
     # CREATE TEST MATCHES
     t = players
     num_matches = players % 2
@@ -140,7 +121,8 @@ def create_test_tournament(t_id : int, players : int):
             num_matches += t % 2
 
     print(num_matches)
-    quit()
+    
+    return "datetime=PUT THE DATETIME CREATED HERE" # !!!!!!!!!!!!!!!
 
 def init():
     global db
@@ -196,7 +178,35 @@ def init():
         
     db.commit()
     
-    
+
+class SimpleServer(protocol.Protocol):
+    def connectionMade(self):
+        print("Client has connected to the server.")
+
+    def connectionLost(self, reason):
+        print ("Lost connection with client.")
+        
+    def dataReceived(self, data):
+        # Process inputs, get outputs.
+        "As soon as any data is received, write it back."
+        s = data.decode()
+        if s == "fetchall":
+            self.transport.write(str(fetchall()).encode())
+        elif s[:6] == "create":
+            "create|tournament|{new_id}|{name}|{num_players}"
+            split = s.split('|')
+            print(split)
+            if split[1] == "tournament":
+                datetime = create_tournament(int(split[2]), split[3], int(split[4]))
+                self.transport.write(datetime.encode())
+        else:
+            # This means it will be a database instruction.
+            cur = db.cursor()
+            cur.execute(s)
+            db.commit()
+            print("PROCESSED:", s)
+
+            
 if __name__ == "__main__":
     init() # Set up database if necessary.
     create_debug_testing_data()

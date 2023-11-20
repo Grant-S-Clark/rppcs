@@ -20,6 +20,7 @@ simple_client = None
 connection_failed = False
 database = None
 current_tournament_id = None
+datetime = None
 
 # Networking functions.
 def close_connection():
@@ -65,6 +66,68 @@ def player_name_to_id(name):
             return p_id
     return None
 
+class TournamentCreationWindow(QWidget):
+    def __init__(self, parent):
+        super().__init__(parent = None) # So it is a window
+        self.parent = parent
+        self.setLayout(QGridLayout())
+        self.layout = self.layout()
+        self.name_label = QLabel("Tournament Name:")
+        self.name_entry = QLineEdit()
+        self.count_label = QLabel("Number of Players:")
+        self.count_entry = QLineEdit()
+        self.create_button = QPushButton("Create")
+        self.create_button.clicked.connect(self.submit_tournament)
+        
+        self.layout.addWidget(self.name_label, 0, 0)
+        self.layout.addWidget(self.name_entry, 0, 1)
+        self.layout.addWidget(self.count_label, 1, 0)
+        self.layout.addWidget(self.count_entry, 1, 1)
+        self.layout.addWidget(self.create_button, 2, 0)
+
+        self.setWindowTitle("Create Tournament")
+        self.setWindowIcon(QIcon("data/cctt.png"))
+        
+    def submit_tournament(self):
+        # Invalid Name Checks
+        name = self.name_entry.text().strip()
+        if name == "":
+            return
+
+        for t_id in database["TT"]:
+            if database["TT"][t_id][0] == name:
+                return
+        
+        try:
+            num_players = int(self.count_entry.text())
+        except ValueError:
+            return
+
+        # Pull an unused tournament id
+        t_ids = set(database["TT"].keys())
+        new_id = 0
+        while new_id in t_ids:
+            new_id += 1
+
+        # Separation using pipes so I can do split() with '|'
+        ins = f"create|tournament|{new_id}|{name}|{num_players}"
+        global datetime
+        datetime = None
+        reactor.callFromThread(db_instruction, ins)
+        
+        while datetime is None: # Wait for database communication.
+            pass
+
+        print("DATETIME =", datetime)
+        
+        # Insert into local database.
+        # TODO
+
+        # Close self and tell parent that it closed
+        self.parent.temp_window = None
+
+# END class TournamentCreationWindow
+
 class PlayerToolBox(QToolBox):
     def __init__(self, parent, p_rect, t_id):
         super().__init__(parent = parent)
@@ -88,6 +151,7 @@ class PlayerToolBox(QToolBox):
         self.p_rect.set_player(player_name_to_id(text))
 
 # END class PlayerToolBox
+
 
 class GameWidget(QWidget):
     def __init__(self, parent, g_id):
@@ -231,35 +295,102 @@ class MatchToolBox(QToolBox):
         self.m_rect.set_player1(player_name_to_id(text))
     def p2_selection_changed(self, text):
         self.m_rect.set_player2(player_name_to_id(text))
-    
-    # END class MatchToolBox
+
+# END class MatchToolBox
+
+
+class TournamentRenameWidget(QWidget):
+    def __init__(self, parent):
+        super().__init__(parent = parent)
+        self.parent = parent # For calling parent functions.
+        self.selection_list = QListWidget()
+        self.label = QLabel("Rename Selected:")
+        self.line_edit = QLineEdit()
+        self.setLayout(QVBoxLayout())
+        self.layout = self.layout()
+
+        self.selected = None
+        self.t_ids = list()
+        for i, t_id in enumerate(database["TT"]):
+            self.t_ids.append(t_id)
+            self.selection_list.addItem(database["TT"][t_id][0])
+        self.selection_list.itemPressed.connect(self.list_selection_changed)
+        self.line_edit.editingFinished.connect(self.edit_tournament_name)
+
+        self.layout.addWidget(self.selection_list)
+        self.layout.addWidget(self.label)
+        self.layout.addWidget(self.line_edit)
+        
+    def list_selection_changed(self, item):
+        selected = self.selection_list.row(item)
+        if selected == self.selected:
+            return
+        self.selected = selected
+        self.line_edit.setText(item.text())
+
+    def edit_tournament_name(self):
+        if self.selected is None:
+            return
+        
+        new_name = self.line_edit.text()
+
+        self.selection_list.item(self.selected).setText(new_name)
+        database["TT"][self.t_ids[self.selected]][0] = new_name
+        ins = f"UPDATE tournaments SET name = '{new_name}' WHERE id = {self.t_ids[self.selected]}"
+        reactor.callFromThread(db_instruction, ins)
+
+        # Update the tournament name in the selection list in
+        # the parent toolbox.
+        self.parent.setup_selection_box()
+
+# END class TournamentRenameWidget
+
 
 class TournamentToolBox(QToolBox):
     def __init__(self, parent, t_id):
         super().__init__(parent = parent)
         self.t_id = t_id
-        self.selection_box = QComboBox()
+        self.selection_box = None
+        self.setup_selection_box()
+        self.rename_widget = TournamentRenameWidget(self)
+        self.addItem(self.rename_widget, "Rename Tournanents")
+        
+    def setup_selection_box(self):
+        old = None
+        if self.selection_box is not None:
+            old = self.selection_box
+            
+        selection_box = QComboBox()
+        
         current_index = 0
-        self.selection_box.addItem("None")
+        selection_box.addItem("None")
         for i, t_id in enumerate(database["TT"]):
-            self.selection_box.addItem(database["TT"][t_id][0])
+            selection_box.addItem(database["TT"][t_id][0])
             if t_id == self.t_id:
                 current_index = i + 1
         
-        self.selection_box.setCurrentIndex(current_index)
+        selection_box.setCurrentIndex(current_index)
+
+        if old is None:
+            self.selection_box = selection_box
+            self.addItem(self.selection_box, "Select Tournament")
+        else:
+            self.removeItem(0)
+            old.close()
+            self.selection_box = selection_box
+            self.insertItem(0, self.selection_box, "Select Tournament")
+            
+        self.selection_box.currentTextChanged.connect(self.tournament_selection_changed)
         
-        self.addItem(self.selection_box, "Select Tournament")
-
-        self.selection_box.currentTextChanged.connect(self.selection_changed)
-
-    def selection_changed(self, text):
+    def tournament_selection_changed(self, text):
         global current_tournament_id
         current_tournament_id = tournament_name_to_id(text)
         self.t_id = current_tournament_id
         self.parent().update_tournament()
 
+# END class TournamentToolBox
 
-# Class for rectangles associated with players in a tournament.
+
 class MatchRect:
     def __init__(self,
                  x, y, w, h,
@@ -289,6 +420,7 @@ class MatchRect:
 
     def set_player1(self, p_id):
         self.p1_id = p_id
+        database["MT"][self.m_id][1] = p_id
         ins = f"UPDATE matches SET p1_id = {p_id} WHERE id = {self.m_id}"
         reactor.callFromThread(db_instruction, ins)
         string = database["PT"][self.p1_id][0] + " V.S. " + database["PT"][self.p2_id][0]
@@ -296,12 +428,15 @@ class MatchRect:
 
     def set_player2(self, p_id):
         self.p2_id = p_id
+        database["MT"][self.m_id][2] = p_id
         ins = f"UPDATE matches SET p2_id = {p_id} WHERE id = {self.m_id}"
         reactor.callFromThread(db_instruction, ins)
         string = database["PT"][self.p1_id][0] + " V.S. " + database["PT"][self.p2_id][0]
         self.text.setPlainText(string)
 
-# Class for rectangles associated with players in a tournament.
+# END class MatchRect
+
+
 class PlayerRect:
     def __init__(self,
                  x, y, w, h,
@@ -375,7 +510,9 @@ class TournamentGraphicsScene(QGraphicsScene):
     def mouseReleaseEvent(self, event):
         self.is_clicked = False
             
-        
+# END class TournamentGraphicsScene
+
+
 # Class for the main widget of the tournament mode. Will consist
 # of 3 widgets, a QGraphicsScene, a QGraphicsView, and a custom
 # QToolBox depending on the type of object selected on the
@@ -499,7 +636,10 @@ class TournamentWidget(QWidget):
         if current_tournament_id != self.t_id or True:
             self.t_id = current_tournament_id
             self.setup_graphics()
-    
+
+# END class TournamentWidget
+
+
 # Class for the main window of the program.
 class RPPCS_Main(QMainWindow):
     def __init__(self):
@@ -530,6 +670,8 @@ class RPPCS_Main(QMainWindow):
         self.setGeometry(100, 100, WIN_X, WIN_Y)
         self.setWindowIcon(QIcon("data/cctt.png"))
 
+        self.temp_window = None
+        
         # Menu bar setup
         menu_bar = self.menuBar()
         action_menu = menu_bar.addMenu("&Actions")
@@ -541,6 +683,9 @@ class RPPCS_Main(QMainWindow):
         test_action.setShortcut("t")
         test_action.triggered.connect(self.test)
         action_menu.addAction(test_action)
+        create_tournament_action = QAction("Create Tournament", self)
+        create_tournament_action.triggered.connect(self.create_tournament)
+        action_menu.addAction(create_tournament_action)
 
         # Tool bar setup
         toolbar = QToolBar("Main Toolbar")
@@ -573,6 +718,13 @@ class RPPCS_Main(QMainWindow):
 
     def test(self):
         reactor.callFromThread(fetchall)
+
+    def create_tournament(self):
+        if self.temp_window is not None:
+            self.temp_window.close()
+        self.temp_window = TournamentCreationWindow(self)
+        self.temp_window.show()
+        
         
     def set_central_widget_tournaments(self):
         # Set the window's central widget to be the tournament editor widget
@@ -594,7 +746,6 @@ class RPPCS_Main(QMainWindow):
         
 # END class RPPCS_Main
 
-
     
 class SimpleClient(protocol.Protocol):
     def connectionMade(self):
@@ -604,12 +755,17 @@ class SimpleClient(protocol.Protocol):
         simple_client = self
 
     def dataReceived(self, data):
-        global database
-        if database is None:
-            database = eval(data.decode())
+        decoded = data.decode()
+        if decoded[:9] == "datetime=":
+            global datetime
+            datetime = decoded[9:]
         else:
-            print(data.decode())
-            print()
+            global database
+            if database is None:
+                database = eval(decoded)
+            else:
+                print(decoded)
+                print()
 
     def connectionLost(self, reason):
         global simple_client
@@ -617,7 +773,6 @@ class SimpleClient(protocol.Protocol):
         print(f"connection lost")
         
 # END SimpleClient
-
 
 
 class SimpleFactory(protocol.ClientFactory):
@@ -633,7 +788,6 @@ class SimpleFactory(protocol.ClientFactory):
         reactor.stop()
         
 # END SimpleFactory
-
 
 
 if __name__ == "__main__":
