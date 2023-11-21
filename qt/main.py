@@ -12,7 +12,7 @@ from twisted.internet import protocol, reactor
 WIN_X = 1000
 WIN_Y = 600
 
-PORT = 8000
+PORT = 8003
 
 # Global Objects
 app = None
@@ -20,7 +20,7 @@ simple_client = None
 connection_failed = False
 database = None
 current_tournament_id = None
-datetime = None
+finished = None
 
 # Networking functions.
 def close_connection():
@@ -89,6 +89,8 @@ class TournamentCreationWindow(QWidget):
         self.setWindowIcon(QIcon("data/cctt.png"))
         
     def submit_tournament(self):
+        global database
+        
         # Invalid Name Checks
         name = self.name_entry.text().strip()
         if name == "":
@@ -111,17 +113,26 @@ class TournamentCreationWindow(QWidget):
 
         # Separation using pipes so I can do split() with '|'
         ins = f"create|tournament|{new_id}|{name}|{num_players}"
-        global datetime
-        datetime = None
+        global finished
+        finished = False
         reactor.callFromThread(db_instruction, ins)
         
-        while datetime is None: # Wait for database communication.
+        while not finished: #Wait for database to finish setting up tournament.
+            pass
+        
+        # Re-acquire database with fetchall
+        database = None
+        reactor.callFromThread(fetchall)
+        while database is None:
             pass
 
-        print("DATETIME =", datetime)
-        
-        # Insert into local database.
-        # TODO
+        # Update the tournament widget if necessary
+        if self.parent.t_widget is not None:
+            print(1)
+            self.parent.t_widget.setup_graphics()
+            print(2)
+            self.parent.t_widget.setup_tournament_toolbox()
+            print(3)
 
         # Close self and tell parent that it closed
         self.parent.temp_window = None
@@ -521,6 +532,8 @@ class TournamentWidget(QWidget):
     def __init__(self, parent, t_id):
         super().__init__(parent=parent)
         self.gv = None
+        self.gs = None
+        self.tb = None
         self.t_id = t_id
         self.setLayout(QHBoxLayout())
         self.layout = self.layout()
@@ -603,10 +616,15 @@ class TournamentWidget(QWidget):
             prev.close()
 
     def setup_tournament_toolbox(self):
+        prev = self.tb
         self.tb = TournamentToolBox(self, self.t_id)
-        self.layout.addWidget(self.tb)
-        # Widget 1 has stretch factor of 1.
-        self.layout.setStretch(1, 1)
+        if prev is None:
+            self.layout.addWidget(self.tb)
+            # Widget 1 has stretch factor of 1.
+            self.layout.setStretch(1, 1)
+        else:
+            self.layout.replaceWidget(prev, self.tb)
+            prev.close()
 
     def mousePressEvent(self, event):
         # Event happened in graphics scene, check to see if we need
@@ -671,6 +689,7 @@ class RPPCS_Main(QMainWindow):
         self.setWindowIcon(QIcon("data/cctt.png"))
 
         self.temp_window = None
+        self.t_widget = None
         
         # Menu bar setup
         menu_bar = self.menuBar()
@@ -756,9 +775,10 @@ class SimpleClient(protocol.Protocol):
 
     def dataReceived(self, data):
         decoded = data.decode()
-        if decoded[:9] == "datetime=":
-            global datetime
-            datetime = decoded[9:]
+        print(decoded)
+        if decoded == "Finished":
+            global finished
+            finished = True
         else:
             global database
             if database is None:

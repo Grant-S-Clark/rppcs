@@ -2,7 +2,7 @@
 from twisted.internet import protocol, reactor
 import sqlite3
 
-PORT = 8000
+PORT = 8003
 db = None # Will be set later.
 
 # Translate all tables into a dictionary of 2 dimensional lists.
@@ -92,37 +92,132 @@ def create_debug_testing_data():
     # CREATE BINARY TREE ENTRY
     cur.execute("INSERT INTO match_tree (parent_id, l_child_id, r_child_id) VALUES (2, 0, 1)")
     db.commit()
-          
-def create_tournament(t_id : int, name : str, players : int):
-    """
-    global db
 
+def get_match_game_id_lists(matches : int):
+    m_ids = list()
+    g_ids = list()
+
+    taken_matches = set()
+    taken_games = set()
+    
+    global db
+    cur = db.cursor()
+    cur.execute("SELECT * FROM matches")
+    for row in cur:
+        taken_matches.add(row[0]) # NEED TO CAST TO INT?
+
+    cur.execute("SELECT * FROM games")
+    for row in cur:
+        taken_games.add(row[0]) # NEED TO CAST TO INT?
+
+    i = 0
+    while len(m_ids) < matches:
+        if i not in taken_matches:
+            m_ids.append(i)
+        i += 1
+
+    i = 0
+    while len(g_ids) < matches * 7:
+        if i not in taken_games:
+            g_ids.append(i)
+        i += 1
+
+    return m_ids, g_ids
+
+def create_tournament(t_id : int, name : str, players : int):
+    if players % 2 == 1:
+        players += 1
+
+    matches = players - 1
+
+    global db
     cur = db.cursor()
 
-    # CREATE TEST TOURNEMENT
-    cur.execute("INSERT INTO tournaments (id, name, date) VALUES (?, ?, DATE('now'))",
-                (t_id, f"TestTournament{t_id}")) # Values in a tuple
+    # Create tournament
+    cur.execute("INSERT INTO tournaments (id, name, numplayers, date) VALUES (?, ?, ?, DATE('now'))",
+                (t_id, name, players))
     db.commit()
 
-    # CREATE TEST PLAYERS
-    for i in range(players):
-        cur.execute(f"INSERT INTO players (id, name, skill) VALUES (?, ?, 0)",
-                    (i, f"TestPlayer{i}"))
+    # Get valid id numbers from the database
+    m_ids, g_ids = get_match_game_id_lists(matches)
+    # Create matches
+    m_i = 0
+    g_i = 0
+    
+    # Matches originating from players
+    straggler = None
+    for i in range(players // 2):
+        cur.execute("INSERT INTO matches (id, t_id, p1_id, p2_id) VALUES (?, ?, NULL, NULL)",
+                    (m_ids[m_i], t_id))
         db.commit()
-    """
-    
-    # CREATE TEST MATCHES
-    t = players
-    num_matches = players % 2
-    while t > 0:
-        t //= 2;
-        num_matches += t
-        if t > 1:
-            num_matches += t % 2
+        
+        if (players // 2) % 2 == 1 and i == (players // 2) - 1:
+                straggler = m_ids[m_i]
+                
+        for j in range(7):
+            cur.execute("INSERT INTO games (id, m_id, p1_score, p2_score) VALUES (?, ?, 0, 0)",
+                        (g_ids[g_i], m_ids[m_i]))
+            g_i += 1
+        m_i += 1
+        db.commit()
 
-    print(num_matches)
-    
-    return "datetime=PUT THE DATETIME CREATED HERE" # !!!!!!!!!!!!!!!
+    last_col_count = players // 2
+    matches -= last_col_count
+    strag_col = False
+    # Rest of the matches
+    while matches > 0:
+        
+        """
+        print("-------------------")
+        print("matches =", matches)
+        print("last_col_count =", last_col_count)
+        print("match_col_count =", last_col_count // 2)
+        """
+        match_col_count = last_col_count // 2
+            
+        for i in range(match_col_count):
+            cur.execute("INSERT INTO matches (id, t_id, p1_id, p2_id) VALUES (?, ?, NULL, NULL)",
+                        (m_ids[m_i], t_id))
+            db.commit()
+            cur.execute("INSERT INTO match_tree (parent_id, l_child_id, r_child_id) VALUES (?, ?, ?)",
+                        (m_ids[m_i], m_ids[m_i - last_col_count + i], m_ids[m_i - last_col_count + i + 1]))
+            db.commit()
+
+            if match_col_count % 2 == 1 and i == match_col_count - 1 and straggler is None:
+                straggler = m_ids[m_i]
+                strag_col = True
+
+            for j in range(7):
+                cur.execute("INSERT INTO games (id, m_id, p1_score, p2_score) VALUES (?, ?, 0, 0)",
+                            (g_ids[g_i], m_ids[m_i]))
+                g_i += 1
+            m_i += 1
+            db.commit()
+
+        # Account for straggler match
+        if (match_col_count % 2 == 1 or match_col_count == 0) and not strag_col:
+            cur.execute("INSERT INTO matches (id, t_id, p1_id, p2_id) VALUES (?, ?, NULL, NULL)",
+                        (m_ids[m_i], t_id))
+            db.commit()
+            print(m_ids, len(m_ids))
+            print(m_i - match_col_count)
+            print(straggler)
+            cur.execute("INSERT INTO match_tree (parent_id, l_child_id, r_child_id) VALUES (?, ?, ?)",
+                        (m_ids[m_i], m_ids[m_i - match_col_count], straggler))
+            db.commit()
+            for j in range(7):
+                cur.execute("INSERT INTO games (id, m_id, p1_score, p2_score) VALUES (?, ?, 0, 0)",
+                            (g_ids[g_i], m_ids[m_i]))
+                g_i += 1
+            m_i += 1
+            db.commit()
+            matches -= 1
+        
+        strag_col = False
+        last_col_count = match_col_count
+        matches -= last_col_count
+
+    return
 
 def init():
     global db
@@ -193,12 +288,11 @@ class SimpleServer(protocol.Protocol):
         if s == "fetchall":
             self.transport.write(str(fetchall()).encode())
         elif s[:6] == "create":
-            "create|tournament|{new_id}|{name}|{num_players}"
             split = s.split('|')
             print(split)
             if split[1] == "tournament":
-                datetime = create_tournament(int(split[2]), split[3], int(split[4]))
-                self.transport.write(datetime.encode())
+                create_tournament(int(split[2]), split[3], int(split[4]))
+                self.transport.write("Finished".encode())
         else:
             # This means it will be a database instruction.
             cur = db.cursor()
