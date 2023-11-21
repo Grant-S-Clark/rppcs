@@ -66,6 +66,139 @@ def player_name_to_id(name):
             return p_id
     return None
 
+class PlayerDeletionWindow(QWidget):
+    def __init__(self, parent):
+        super().__init__(parent = None) # So it is a window
+        self.parent = parent
+        self.setLayout(QVBoxLayout())
+        self.layout = self.layout()
+        self.name_label = QLabel("Players:")
+        self.name_list = QListWidget()
+        self.delete_button = QPushButton("Delete")
+        self.delete_button.clicked.connect(self.delete_tournament)
+        self.name_list.itemPressed.connect(self.list_selection_changed)
+
+        for p_id in database["PT"]:
+            self.name_list.addItem(database["PT"][p_id][0])
+        
+        self.layout.addWidget(self.name_label)
+        self.layout.addWidget(self.name_list)
+        self.layout.addWidget(self.delete_button)
+
+        self.move(self.parent.geometry().x() + 50,
+                  self.parent.geometry().y() + 50)
+        
+        self.setWindowTitle("Delete Player")
+        self.setWindowIcon(QIcon("data/cctt.png"))
+
+        self.selected_id = None
+
+    def list_selection_changed(self, item):
+        self.selected_id = player_name_to_id(item.text())
+        
+    def delete_tournament(self):
+        global database
+
+        if self.selected_id is None:
+            return
+        
+        # Separation using pipes so I can do split() with '|'
+        ins = f"delete|player|{self.selected_id}"
+        global finished
+        finished = False
+        reactor.callFromThread(db_instruction, ins)
+        
+        while not finished: #Wait for database to finish setting up tournament.
+            pass
+        
+        # Re-acquire database with fetchall
+        database = None
+        reactor.callFromThread(fetchall)
+        while database is None:
+            pass
+
+        # Update the tournament widget if necessary
+        if self.parent.t_widget is not None:
+            self.parent.t_widget.setup_graphics()
+            self.parent.t_widget.setup_tournament_toolbox()
+
+        # Close self and tell parent that it closed
+        self.parent.temp_window = None
+
+# END class PlayerDeletionWindow
+
+class PlayerCreationWindow(QWidget):
+    def __init__(self, parent):
+        super().__init__(parent = None) # So it is a window
+        self.parent = parent
+        self.setLayout(QGridLayout())
+        self.layout = self.layout()
+        self.name_label = QLabel("Player Name:")
+        self.name_entry = QLineEdit()
+        self.skill_label = QLabel("Skill level (int):")
+        self.skill_entry = QLineEdit()
+        self.create_button = QPushButton("Create")
+        self.create_button.clicked.connect(self.submit_player)
+        
+        self.layout.addWidget(self.name_label, 0, 0)
+        self.layout.addWidget(self.name_entry, 0, 1)
+        self.layout.addWidget(self.skill_label, 1, 0)
+        self.layout.addWidget(self.skill_entry, 1, 1)
+        self.layout.addWidget(self.create_button, 2, 0)
+
+        self.move(self.parent.geometry().x() + 50,
+                  self.parent.geometry().y() + 50)
+        
+        self.setWindowTitle("Create Player")
+        self.setWindowIcon(QIcon("data/cctt.png"))
+        
+    def submit_player(self):
+        global database
+        
+        # Invalid Name Checks
+        name = self.name_entry.text().strip()
+        if name == "":
+            return
+
+        for p_id in database["PT"]:
+            if database["PT"][p_id][0] == name:
+                return
+
+        # Invalid skill level check
+        try:
+            skill = int(self.skill_entry.text())
+        except ValueError:
+            return
+
+        # Pull an unused player id
+        p_ids = set(database["PT"].keys())
+        new_id = 0
+        while new_id in p_ids:
+            new_id += 1
+
+        # Separation using pipes so I can do split() with '|'
+        ins = f"create|player|{new_id}|{name}|{skill}|"
+        global finished
+        finished = False
+        reactor.callFromThread(db_instruction, ins)
+        
+        while not finished: #Wait for database to finish setting up player.
+            pass
+        
+        # Put information into local database, getting whole database
+        # back for creating a single player is not necessary.
+        database["PT"][new_id] = [ name, skill ]
+
+        # Update the tournament widget if necessary
+        #if self.parent.t_widget is not None:
+            #self.parent.t_widget.setup_tournament_toolbox()
+
+        # Close self and tell parent that it closed
+        self.parent.temp_window = None
+
+# END class PlayerCreationWindow
+
+
 class TournamentDeletionWindow(QWidget):
     def __init__(self, parent):
         super().__init__(parent = None) # So it is a window
@@ -192,11 +325,8 @@ class TournamentCreationWindow(QWidget):
 
         # Update the tournament widget if necessary
         if self.parent.t_widget is not None:
-            print(1)
             self.parent.t_widget.setup_graphics()
-            print(2)
             self.parent.t_widget.setup_tournament_toolbox()
-            print(3)
 
         # Close self and tell parent that it closed
         self.parent.temp_window = None
@@ -414,8 +544,46 @@ class TournamentRenameWidget(QWidget):
 
         # Update the tournament name in the selection list in
         # the parent toolbox.
-        self.parent.setup_selection_box()
+        self.parent.setup_selection_widget()
 
+# END class TournamentRenameWidget
+
+
+class TournamentSelectionWidget(QWidget):
+    def __init__(self, parent, t_id):
+        super().__init__(parent = parent)
+        self.parent = parent
+        self.t_id = t_id
+        self.setLayout(QVBoxLayout())
+        self.layout = self.layout()
+        self.selection_box = QComboBox()
+        self.date_label = QLabel()
+        self.setup_widgets()
+
+    def setup_widgets(self): 
+        current_index = 0
+        current_date = "N/A"
+        self.selection_box.addItem("None")
+        for i, t_id in enumerate(database["TT"]):
+            self.selection_box.addItem(database["TT"][t_id][0])
+            if t_id == self.t_id:
+                current_index = i + 1
+                current_date = database["TT"][t_id][2]
+        self.selection_box.setCurrentIndex(current_index)
+        self.date_label.setText(f"Date: {current_date}")
+            
+        self.selection_box.currentTextChanged.connect(self.tournament_selection_changed)
+        self.layout.addWidget(self.selection_box)
+        self.layout.addWidget(self.date_label)
+        
+    def tournament_selection_changed(self, text):
+        self.t_id = tournament_name_to_id(text)
+        if self.t_id is None:
+            self.date_label.setText("Date: N/A")
+        else:
+            self.date_label.setText(f'Date: {database["TT"][self.t_id][2]}')
+        self.parent.tournament_selection_changed(self.t_id)
+        
 # END class TournamentRenameWidget
 
 
@@ -423,42 +591,31 @@ class TournamentToolBox(QToolBox):
     def __init__(self, parent, t_id):
         super().__init__(parent = parent)
         self.t_id = t_id
-        self.selection_box = None
-        self.setup_selection_box()
+        self.selection_widget = None
+        self.setup_selection_widget()
         self.rename_widget = TournamentRenameWidget(self)
         self.addItem(self.rename_widget, "Rename Tournanents")
         
-    def setup_selection_box(self):
+    def setup_selection_widget(self):
         old = None
-        if self.selection_box is not None:
-            old = self.selection_box
+        if self.selection_widget is not None:
+            old = self.selection_widget
             
-        selection_box = QComboBox()
-        
-        current_index = 0
-        selection_box.addItem("None")
-        for i, t_id in enumerate(database["TT"]):
-            selection_box.addItem(database["TT"][t_id][0])
-            if t_id == self.t_id:
-                current_index = i + 1
-        
-        selection_box.setCurrentIndex(current_index)
+        selection_widget = TournamentSelectionWidget(self, self.t_id)
 
         if old is None:
-            self.selection_box = selection_box
-            self.addItem(self.selection_box, "Select Tournament")
+            self.selection_widget = selection_widget
+            self.addItem(self.selection_widget, "Select Tournament")
         else:
             self.removeItem(0)
             old.close()
-            self.selection_box = selection_box
-            self.insertItem(0, self.selection_box, "Select Tournament")
-            
-        self.selection_box.currentTextChanged.connect(self.tournament_selection_changed)
+            self.selection_widget = selection_widget
+            self.insertItem(0, self.selection_widget, "Select Tournament")
         
-    def tournament_selection_changed(self, text):
+    def tournament_selection_changed(self, t_id):
         global current_tournament_id
-        current_tournament_id = tournament_name_to_id(text)
-        self.t_id = current_tournament_id
+        current_tournament_id = t_id
+        self.t_id = t_id
         self.parent().update_tournament()
 
 # END class TournamentToolBox
@@ -541,7 +698,6 @@ class PlayerRect:
             else:
                 self.m_rect.set_player2(p_id)
             
-
     def set_match_rect(self, m_rect):
         self.m_rect = m_rect
 
@@ -642,13 +798,10 @@ class TournamentWidget(QWidget):
             # Height (h) remains 30.
             n = len(self.player_rects) // 2
             first_matches = True
-            print("DEBUG DATA IN setup_graphics():")
-            print("num_matches =", len(tournament_match_id_list(self.t_id)))
-            print("num_players =", len(self.player_rects))
-            print("n =", n)
             j = 0
             mult = 1
             match_rect_dict = dict()
+            num_odds = 0
             for i, m_id in enumerate(tournament_match_id_list(self.t_id)):
                 if (first_matches):
                     self.match_rects.append(MatchRect(pos_x, pos_y,
@@ -672,19 +825,23 @@ class TournamentWidget(QWidget):
                     
                 # Save the match rectangles for drawing later with the match tree.
                 match_rect_dict[m_id] = self.match_rects[-1]
-                
+
                 if (j == n - 1):
+                    num_odds += n % 2
                     pos_x += w + 40
                     start_y += 60 * mult
                     pos_y = start_y
                     n = n // 2
+                    if num_odds == 2:
+                        num_odds = 0
+                        n += 1
                     if n == 0:
                         n = 1
                     first_matches = False
                     j = 0
                     mult *= 2
                 else:
-                    pos_y += 120 * mult# move down based on how
+                    pos_y += 120 * mult # move down based on what column the rectangle is in
                     j += 1
 
             # Draw lines between matches
@@ -786,7 +943,7 @@ class RPPCS_Main(QMainWindow):
         while database is None:
             pass
         
-        print(database) # DEBUGGING!!!!!!!!!
+        # print(database)
         
         global WIN_X, WIN_Y
 
@@ -814,7 +971,13 @@ class RPPCS_Main(QMainWindow):
         delete_tournament_action = QAction("Delete Tournament", self)
         delete_tournament_action.triggered.connect(self.delete_tournament)
         action_menu.addAction(delete_tournament_action)
-
+        create_player_action = QAction("Create Player", self)
+        create_player_action.triggered.connect(self.create_player)
+        action_menu.addAction(create_player_action)
+        delete_player_action = QAction("Delete Player", self)
+        delete_player_action.triggered.connect(self.delete_player)
+        action_menu.addAction(delete_player_action)
+        
         # Tool bar setup
         toolbar = QToolBar("Main Toolbar")
         self.addToolBar(toolbar)
@@ -858,6 +1021,18 @@ class RPPCS_Main(QMainWindow):
             self.temp_window.close()
         self.temp_window = TournamentDeletionWindow(self)
         self.temp_window.show()
+
+    def create_player(self):
+        if self.temp_window is not None:
+            self.temp_window.close()
+        self.temp_window = PlayerCreationWindow(self)
+        self.temp_window.show()
+
+    def delete_player(self):
+        if self.temp_window is not None:
+            self.temp_window.close()
+        self.temp_window = PlayerDeletionWindow(self)
+        self.temp_window.show()
         
     def set_central_widget_tournaments(self):
         # Set the window's central widget to be the tournament editor widget
@@ -889,7 +1064,6 @@ class SimpleClient(protocol.Protocol):
 
     def dataReceived(self, data):
         decoded = data.decode()
-        print(decoded)
         if decoded == "Finished":
             global finished
             finished = True
@@ -897,9 +1071,6 @@ class SimpleClient(protocol.Protocol):
             global database
             if database is None:
                 database = eval(decoded)
-            else:
-                print(decoded)
-                print()
 
     def connectionLost(self, reason):
         global simple_client

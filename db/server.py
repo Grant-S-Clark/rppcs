@@ -145,14 +145,15 @@ def create_tournament(t_id : int, name : str, players : int):
     g_i = 0
     
     # Matches originating from players
-    straggler = None
+    last_odd_id0 = None
+    last_odd_id1 = None
     for i in range(players // 2):
         cur.execute("INSERT INTO matches (id, t_id, p1_id, p2_id) VALUES (?, ?, NULL, NULL)",
                     (m_ids[m_i], t_id))
         db.commit()
         
         if (players // 2) % 2 == 1 and i == (players // 2) - 1:
-                straggler = m_ids[m_i]
+            last_odd_id0 = m_ids[m_i]
                 
         for j in range(7):
             cur.execute("INSERT INTO games (id, m_id, p1_score, p2_score) VALUES (?, ?, 0, 0)",
@@ -163,9 +164,9 @@ def create_tournament(t_id : int, name : str, players : int):
 
     last_col_count = players // 2
     matches -= last_col_count
-    strag_col = False
+    is_straggler_col = False
     # Rest of the matches
-    while matches > 0:
+    while matches > 0:    
         match_col_count = last_col_count // 2
             
         for i in range(match_col_count):
@@ -176,9 +177,12 @@ def create_tournament(t_id : int, name : str, players : int):
                         (m_ids[m_i], m_ids[m_i - last_col_count + i], m_ids[m_i - last_col_count + i + 1]))
             db.commit()
 
-            if match_col_count % 2 == 1 and i == match_col_count - 1 and straggler is None:
-                straggler = m_ids[m_i]
-                strag_col = True
+            if match_col_count % 2 == 1 and i == match_col_count - 1:
+                if last_odd_id0 is None:
+                    last_odd_id0 = m_ids[m_i]
+                else:
+                    last_odd_id1 = m_ids[m_i]
+                    is_straggler_col = True
 
             for j in range(7):
                 cur.execute("INSERT INTO games (id, m_id, p1_score, p2_score) VALUES (?, ?, 0, 0)",
@@ -188,34 +192,54 @@ def create_tournament(t_id : int, name : str, players : int):
             db.commit()
 
         # Account for straggler match
-        if (match_col_count % 2 == 1 or match_col_count == 0) and not strag_col:
+        if not is_straggler_col and last_odd_id0 is not None and last_odd_id1 is not None:
             cur.execute("INSERT INTO matches (id, t_id, p1_id, p2_id) VALUES (?, ?, NULL, NULL)",
                         (m_ids[m_i], t_id))
             db.commit()
-            print(m_ids, len(m_ids))
-            print(m_i - match_col_count)
-            print(straggler)
             cur.execute("INSERT INTO match_tree (parent_id, l_child_id, r_child_id) VALUES (?, ?, ?)",
-                        (m_ids[m_i], m_ids[m_i - match_col_count], straggler))
+                        (m_ids[m_i], last_odd_id1, last_odd_id0))
             db.commit()
+            last_odd_id0 = None
+            last_odd_id1 = None
             for j in range(7):
                 cur.execute("INSERT INTO games (id, m_id, p1_score, p2_score) VALUES (?, ?, 0, 0)",
                             (g_ids[g_i], m_ids[m_i]))
                 g_i += 1
+
+            # if this match is another straggler match, mark it as such.
+            if match_col_count % 2 == 0:
+                last_odd_id0 = m_ids[m_i]
+            
             m_i += 1
             db.commit()
-            matches -= 1
+            match_col_count += 1 # We added a match
         
-        strag_col = False
+        is_straggler_col = False
         last_col_count = match_col_count
         matches -= last_col_count
 
+    return
+
+def create_player(p_id : int, name : str, skill : int):
+    global db
+    cur = db.cursor()
+    cur.execute("INSERT INTO players (id, name, skill) VALUES (?, ?, ?)",
+                (p_id, name, skill))
+    db.commit()
+    return
+
+def delete_player(p_id : int):
+    global db
+    cur = db.cursor()
+    cur.execute(f"DELETE FROM players WHERE id = {p_id}")
+    db.commit()
     return
 
 def delete_tournament(t_id : int):
     global db
     cur = db.cursor()
     cur.execute(f"DELETE FROM tournaments WHERE id = {t_id}")
+    db.commit()
     return
 
 def init():
@@ -278,7 +302,7 @@ class SimpleServer(protocol.Protocol):
         print("Client has connected to the server.")
 
     def connectionLost(self, reason):
-        print ("Lost connection with client.")
+        print("Lost connection with client.")
         
     def dataReceived(self, data):
         # Process inputs, get outputs.
@@ -288,27 +312,31 @@ class SimpleServer(protocol.Protocol):
             self.transport.write(str(fetchall()).encode())
         elif s[:6] == "create":
             split = s.split('|')
-            print(split)
             if split[1] == "tournament":
                 create_tournament(int(split[2]), split[3], int(split[4]))
                 self.transport.write("Finished".encode())
+            elif split[1] == "player":
+                create_player(int(split[2]), split[3], int(split[4]))
+                self.transport.write("Finished".encode())
         elif s[:6] == "delete":
             split = s.split('|')
-            print(split)
             if split[1] == "tournament":
                 delete_tournament(int(split[2]))
+                self.transport.write("Finished".encode())
+            elif split[1] == "player":
+                delete_player(int(split[2]))
                 self.transport.write("Finished".encode())
         else:
             # This means it will be a database instruction.
             cur = db.cursor()
             cur.execute(s)
             db.commit()
-            print("PROCESSED:", s)
+            # print("PROCESSED:", s)
 
             
 if __name__ == "__main__":
     init() # Set up database if necessary.
-    create_debug_testing_data()
+    # create_debug_testing_data()
     
     # This runs the protocol on port 8000
     factory = protocol.ServerFactory() # Basic server factory.
