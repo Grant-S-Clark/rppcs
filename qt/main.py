@@ -66,6 +66,67 @@ def player_name_to_id(name):
             return p_id
     return None
 
+class TournamentDeletionWindow(QWidget):
+    def __init__(self, parent):
+        super().__init__(parent = None) # So it is a window
+        self.parent = parent
+        self.setLayout(QVBoxLayout())
+        self.layout = self.layout()
+        self.name_label = QLabel("Tournaments:")
+        self.name_list = QListWidget()
+        self.delete_button = QPushButton("Delete")
+        self.delete_button.clicked.connect(self.delete_tournament)
+        self.name_list.itemPressed.connect(self.list_selection_changed)
+
+        for t_id in database["TT"]:
+            self.name_list.addItem(database["TT"][t_id][0])
+        
+        self.layout.addWidget(self.name_label)
+        self.layout.addWidget(self.name_list)
+        self.layout.addWidget(self.delete_button)
+
+        self.move(self.parent.geometry().x() + 50,
+                  self.parent.geometry().y() + 50)
+        
+        self.setWindowTitle("Delete Tournament")
+        self.setWindowIcon(QIcon("data/cctt.png"))
+
+        self.selected_id = None
+
+    def list_selection_changed(self, item):
+        self.selected_id = tournament_name_to_id(item.text())
+        
+    def delete_tournament(self):
+        global database
+
+        if self.selected_id is None:
+            return
+        
+        # Separation using pipes so I can do split() with '|'
+        ins = f"delete|tournament|{self.selected_id}"
+        global finished
+        finished = False
+        reactor.callFromThread(db_instruction, ins)
+        
+        while not finished: #Wait for database to finish setting up tournament.
+            pass
+        
+        # Re-acquire database with fetchall
+        database = None
+        reactor.callFromThread(fetchall)
+        while database is None:
+            pass
+
+        # Update the tournament widget if necessary
+        if self.parent.t_widget is not None:
+            self.parent.t_widget.setup_graphics()
+            self.parent.t_widget.setup_tournament_toolbox()
+
+        # Close self and tell parent that it closed
+        self.parent.temp_window = None
+
+# END class TournamentDeletionWindow
+
 class TournamentCreationWindow(QWidget):
     def __init__(self, parent):
         super().__init__(parent = None) # So it is a window
@@ -85,6 +146,9 @@ class TournamentCreationWindow(QWidget):
         self.layout.addWidget(self.count_entry, 1, 1)
         self.layout.addWidget(self.create_button, 2, 0)
 
+        self.move(self.parent.geometry().x() + 50,
+                  self.parent.geometry().y() + 50)
+        
         self.setWindowTitle("Create Tournament")
         self.setWindowIcon(QIcon("data/cctt.png"))
         
@@ -320,10 +384,8 @@ class TournamentRenameWidget(QWidget):
         self.setLayout(QVBoxLayout())
         self.layout = self.layout()
 
-        self.selected = None
-        self.t_ids = list()
-        for i, t_id in enumerate(database["TT"]):
-            self.t_ids.append(t_id)
+        self.selected_id = None
+        for t_id in database["TT"]:
             self.selection_list.addItem(database["TT"][t_id][0])
         self.selection_list.itemPressed.connect(self.list_selection_changed)
         self.line_edit.editingFinished.connect(self.edit_tournament_name)
@@ -333,21 +395,21 @@ class TournamentRenameWidget(QWidget):
         self.layout.addWidget(self.line_edit)
         
     def list_selection_changed(self, item):
-        selected = self.selection_list.row(item)
-        if selected == self.selected:
+        selected_id = tournament_name_to_id(item.text())
+        if selected_id == self.selected_id:
             return
-        self.selected = selected
+        self.selected_id = selected_id
         self.line_edit.setText(item.text())
 
     def edit_tournament_name(self):
-        if self.selected is None:
+        if self.selected_id is None:
             return
         
         new_name = self.line_edit.text()
 
-        self.selection_list.item(self.selected).setText(new_name)
-        database["TT"][self.t_ids[self.selected]][0] = new_name
-        ins = f"UPDATE tournaments SET name = '{new_name}' WHERE id = {self.t_ids[self.selected]}"
+        self.selection_list.item(self.selected_id).setText(new_name)
+        database["TT"][self.selected_id][0] = new_name
+        ins = f"UPDATE tournaments SET name = '{new_name}' WHERE id = {self.selected_id}"
         reactor.callFromThread(db_instruction, ins)
 
         # Update the tournament name in the selection list in
@@ -541,6 +603,12 @@ class TournamentWidget(QWidget):
         self.setup_graphics()
         self.setup_tournament_toolbox()
 
+    def draw_lines_to_gs(self, x0, y0, x1, y1):
+        self.gs.addLine(QtCore.QLineF(x0, y0, x0 + (x1 - x0) / 2, y0))
+        self.gs.addLine(QtCore.QLineF(x0 + (x1 - x0) / 2, y0, x0 + (x1 - x0) / 2, y1))
+        self.gs.addLine(QtCore.QLineF(x0 + (x1 - x0) / 2, y1, x1, y1))
+        return
+        
     def setup_graphics(self):
         # Create the widgets
         prev = self.gv
@@ -578,6 +646,9 @@ class TournamentWidget(QWidget):
             print("num_matches =", len(tournament_match_id_list(self.t_id)))
             print("num_players =", len(self.player_rects))
             print("n =", n)
+            j = 0
+            mult = 1
+            match_rect_dict = dict()
             for i, m_id in enumerate(tournament_match_id_list(self.t_id)):
                 if (first_matches):
                     self.match_rects.append(MatchRect(pos_x, pos_y,
@@ -586,21 +657,56 @@ class TournamentWidget(QWidget):
                                                       self.player_rects[i * 2 + 1]))
                     self.player_rects[i * 2].set_match_rect(self.match_rects[-1])
                     self.player_rects[i * 2 + 1].set_match_rect(self.match_rects[-1])
+                    # Draw lines between players and match rectangles.
+                    self.draw_lines_to_gs(self.player_rects[i * 2].x + self.player_rects[i * 2].w,
+                                          self.player_rects[i * 2].y + self.player_rects[i * 2].h / 2,
+                                          self.match_rects[-1].x,
+                                          self.match_rects[-1].y + self.match_rects[-1].h / 2)
+                    self.draw_lines_to_gs(self.player_rects[i * 2 + 1].x + self.player_rects[i * 2 + 1].w,
+                                          self.player_rects[i * 2 + 1].y + self.player_rects[i * 2 + 1].h / 2,
+                                          self.match_rects[-1].x,
+                                          self.match_rects[-1].y + self.match_rects[-1].h / 2)
                 else:
                     self.match_rects.append(MatchRect(pos_x, pos_y,
                                                       w, h, m_id, self.gs))
-                if (i == n - 1):
+                    
+                # Save the match rectangles for drawing later with the match tree.
+                match_rect_dict[m_id] = self.match_rects[-1]
+                
+                if (j == n - 1):
                     pos_x += w + 40
-                    start_y += 60
+                    start_y += 60 * mult
                     pos_y = start_y
-                    n = round(n / 2)
+                    n = n // 2
+                    if n == 0:
+                        n = 1
                     first_matches = False
+                    j = 0
+                    mult *= 2
                 else:
-                    pos_y += 120 # move down two rectangles 
+                    pos_y += 120 * mult# move down based on how
+                    j += 1
 
+            # Draw lines between matches
+            for parent_id in database["BT"]:
+                if database["MT"][parent_id][0] == self.t_id:
+                    l_id = database["BT"][parent_id][0]
+                    r_id = database["BT"][parent_id][1]
+                    self.draw_lines_to_gs(match_rect_dict[l_id].x + match_rect_dict[l_id].w,
+                                          match_rect_dict[l_id].y + match_rect_dict[l_id].h / 2,
+                                          match_rect_dict[parent_id].x,
+                                          match_rect_dict[parent_id].y + match_rect_dict[parent_id].h / 2)
+                    self.draw_lines_to_gs(match_rect_dict[r_id].x + match_rect_dict[r_id].w,
+                                          match_rect_dict[r_id].y + match_rect_dict[r_id].h / 2,
+                                          match_rect_dict[parent_id].x,
+                                          match_rect_dict[parent_id].y + match_rect_dict[parent_id].h / 2)
+            
             self.gs.set_match_rects(self.match_rects)
             for m_rect in self.match_rects:
                 m_rect.add_to_scene()
+
+            # Make sure all objects are visible.
+            self.gv.setSceneRect(0, 0, pos_x, len(self.player_rects) * 60 + 40)
 
             
         # Set scroll bars to be at top right corner of scene.
@@ -705,6 +811,9 @@ class RPPCS_Main(QMainWindow):
         create_tournament_action = QAction("Create Tournament", self)
         create_tournament_action.triggered.connect(self.create_tournament)
         action_menu.addAction(create_tournament_action)
+        delete_tournament_action = QAction("Delete Tournament", self)
+        delete_tournament_action.triggered.connect(self.delete_tournament)
+        action_menu.addAction(delete_tournament_action)
 
         # Tool bar setup
         toolbar = QToolBar("Main Toolbar")
@@ -743,7 +852,12 @@ class RPPCS_Main(QMainWindow):
             self.temp_window.close()
         self.temp_window = TournamentCreationWindow(self)
         self.temp_window.show()
-        
+
+    def delete_tournament(self):
+        if self.temp_window is not None:
+            self.temp_window.close()
+        self.temp_window = TournamentDeletionWindow(self)
+        self.temp_window.show()
         
     def set_central_widget_tournaments(self):
         # Set the window's central widget to be the tournament editor widget

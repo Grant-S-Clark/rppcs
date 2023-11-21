@@ -166,13 +166,6 @@ def create_tournament(t_id : int, name : str, players : int):
     strag_col = False
     # Rest of the matches
     while matches > 0:
-        
-        """
-        print("-------------------")
-        print("matches =", matches)
-        print("last_col_count =", last_col_count)
-        print("match_col_count =", last_col_count // 2)
-        """
         match_col_count = last_col_count // 2
             
         for i in range(match_col_count):
@@ -219,6 +212,12 @@ def create_tournament(t_id : int, name : str, players : int):
 
     return
 
+def delete_tournament(t_id : int):
+    global db
+    cur = db.cursor()
+    cur.execute(f"DELETE FROM tournaments WHERE id = {t_id}")
+    return
+
 def init():
     global db
     db = sqlite3.connect("rppcs_data.db")
@@ -244,7 +243,7 @@ def init():
                                                       t_id    INT UNSIGNED NOT NULL,
                                                       p1_id   INT UNSIGNED,
                                                       p2_id   INT UNSIGNED,
-                                                      FOREIGN KEY (t_id) REFERENCES tournaments(id),
+                                                      FOREIGN KEY (t_id) REFERENCES tournaments(id) ON DELETE CASCADE,
                                                       FOREIGN KEY (p1_id) REFERENCES players(id) ON DELETE SET NULL,
                                                       FOREIGN KEY (p2_id) REFERENCES players(id) ON DELETE SET NULL)""")
     db.commit()
@@ -292,6 +291,12 @@ class SimpleServer(protocol.Protocol):
             print(split)
             if split[1] == "tournament":
                 create_tournament(int(split[2]), split[3], int(split[4]))
+                self.transport.write("Finished".encode())
+        elif s[:6] == "delete":
+            split = s.split('|')
+            print(split)
+            if split[1] == "tournament":
+                delete_tournament(int(split[2]))
                 self.transport.write("Finished".encode())
         else:
             # This means it will be a database instruction.
