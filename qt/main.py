@@ -79,7 +79,8 @@ class PlayerDeletionWindow(QWidget):
         self.name_list.itemPressed.connect(self.list_selection_changed)
 
         for p_id in database["PT"]:
-            self.name_list.addItem(database["PT"][p_id][0])
+            if database["PT"][p_id][0] != "N/A": # Cannot delete null player.
+                self.name_list.addItem(database["PT"][p_id][0])
         
         self.layout.addWidget(self.name_label)
         self.layout.addWidget(self.name_list)
