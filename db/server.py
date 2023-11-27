@@ -2,7 +2,7 @@
 from twisted.internet import protocol, reactor
 import sqlite3
 
-PORT = 8003
+PORT = 8000
 db = None # Will be set later.
 
 # Translate all tables into a dictionary of 2 dimensional lists.
@@ -343,4 +343,3 @@ if __name__ == "__main__":
     factory.protocol = SimpleServer
     reactor.listenTCP(PORT, factory)
     reactor.run()
-

@@ -12,7 +12,7 @@ from twisted.internet import protocol, reactor
 WIN_X = 1000
 WIN_Y = 600
 
-PORT = 8003
+PORT = 8000
 
 # Global Objects
 app = None
@@ -388,8 +388,6 @@ class GameWidget(QWidget):
         self.layout.addWidget(self.p2_minus, 3, 1)
 
     def p1_plus_pressed(self):
-        if self.p1_score == 11:
-            return
         self.p1_score += 1
         database["GT"][self.g_id][1] += 1
         ins = f"UPDATE games SET p1_score = {self.p1_score} WHERE id = {self.g_id}"
@@ -397,8 +395,6 @@ class GameWidget(QWidget):
         self.p1_label.setText(f"P1 Score: {self.p1_score}")
         
     def p2_plus_pressed(self):
-        if self.p2_score == 11:
-            return
         self.p2_score += 1
         database["GT"][self.g_id][2] += 1
         ins = f"UPDATE games SET p2_score = {self.p2_score} WHERE id = {self.g_id}"
