@@ -128,6 +128,8 @@ def create_tournament(t_id : int, name : str, players : int):
     if players % 2 == 1:
         players += 1
 
+    print(players)
+    
     matches = players - 1
 
     global db
@@ -166,7 +168,7 @@ def create_tournament(t_id : int, name : str, players : int):
     matches -= last_col_count
     is_straggler_col = False
     # Rest of the matches
-    while matches > 0:    
+    while matches > 0:
         match_col_count = last_col_count // 2
             
         for i in range(match_col_count):
@@ -177,10 +179,10 @@ def create_tournament(t_id : int, name : str, players : int):
                         (m_ids[m_i], m_ids[m_i - last_col_count + i], m_ids[m_i - last_col_count + i + 1]))
             db.commit()
 
-            if match_col_count % 2 == 1 and i == match_col_count - 1:
+            if matches == 2 or (match_col_count % 2 == 1 and i == match_col_count - 1 and match_col_count != 1):
                 if last_odd_id0 is None:
                     last_odd_id0 = m_ids[m_i]
-                else:
+                elif last_odd_id1 is None:
                     last_odd_id1 = m_ids[m_i]
                     is_straggler_col = True
 
@@ -193,6 +195,7 @@ def create_tournament(t_id : int, name : str, players : int):
 
         # Account for straggler match
         if not is_straggler_col and last_odd_id0 is not None and last_odd_id1 is not None:
+            print("HERE")
             cur.execute("INSERT INTO matches (id, t_id, p1_id, p2_id) VALUES (?, ?, NULL, NULL)",
                         (m_ids[m_i], t_id))
             db.commit()

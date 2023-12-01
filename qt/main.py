@@ -21,11 +21,14 @@ connection_failed = False
 database = None
 current_tournament_id = None
 finished = None
+rcv_string = ""
 
 # Networking functions.
 def close_connection():
     simple_client.transport.loseConnection()
 def fetchall():
+    global rcv_string
+    rcv_string = ""
     simple_client.transport.write(b"fetchall")
 def db_instruction(ins):
     simple_client.transport.write(ins.encode())
@@ -1066,8 +1069,13 @@ class SimpleClient(protocol.Protocol):
             finished = True
         else:
             global database
+            global rcv_string
             if database is None:
-                database = eval(decoded)
+                rcv_string += decoded # If the database is too long
+                try:
+                    database = eval(rcv_string)
+                except SyntaxError:
+                    pass
 
     def connectionLost(self, reason):
         global simple_client
