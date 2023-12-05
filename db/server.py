@@ -127,8 +127,6 @@ def get_match_game_id_lists(matches : int):
 def create_tournament(t_id : int, name : str, players : int):
     if players % 2 == 1:
         players += 1
-
-    print(players)
     
     matches = players - 1
 
@@ -195,7 +193,6 @@ def create_tournament(t_id : int, name : str, players : int):
 
         # Account for straggler match
         if not is_straggler_col and last_odd_id0 is not None and last_odd_id1 is not None:
-            print("HERE")
             cur.execute("INSERT INTO matches (id, t_id, p1_id, p2_id) VALUES (?, ?, NULL, NULL)",
                         (m_ids[m_i], t_id))
             db.commit()
