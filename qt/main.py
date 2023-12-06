@@ -126,6 +126,10 @@ class PlayerDeletionWindow(QWidget):
             self.parent.t_widget.setup_graphics()
             self.parent.t_widget.setup_tournament_toolbox()
 
+        # Otherwise update the player widget.
+        elif self.parent.p_widget is not None:
+            self.parent.set_central_widget_players()
+            
         # Close self and tell parent that it closed
         self.parent.temp_window = None
 
@@ -193,9 +197,9 @@ class PlayerCreationWindow(QWidget):
         # back for creating a single player is not necessary.
         database["PT"][new_id] = [ name, skill ]
 
-        # Update the tournament widget if necessary
-        #if self.parent.t_widget is not None:
-            #self.parent.t_widget.setup_tournament_toolbox()
+        # Update the player widget if necessary
+        if self.parent.p_widget is not None:
+            self.parent.set_central_widget_players()
 
         # Close self and tell parent that it closed
         self.parent.temp_window = None
@@ -920,77 +924,95 @@ class TournamentWidget(QWidget):
 
 # END class TournamentWidget
 
+class PlayerEditToolBox(QToolBox):
+    def __init__(self, parent, p_id):
+        super().__init__(parent = parent)
+        self.p_id = p_id
+        self.parent = parent
+        self.name = database["PT"][self.p_id][0]
+        self.skill = database["PT"][self.p_id][1]
+        self.name_edit = QLineEdit()
+        self.name_edit.setText(self.name)
+        self.name_edit.editingFinished.connect(self.name_changed)
+        self.addItem(self.name_edit, "Edit Player Name")
+        self.skill_edit = QLineEdit()
+        self.skill_edit.setText(str(self.skill))
+        self.skill_edit.editingFinished.connect(self.skill_changed)
+        self.addItem(self.skill_edit, "Edit Player Skill")
+        
+    def name_changed(self):
+        if self.p_id is None:
+            return
+        
+        new_name = self.name_edit.text().strip()
+        # No exact matching names.
+        for p_id in database["PT"]:
+            if new_name == database["PT"][p_id][0]:
+                return
+        self.name = new_name
+
+        # Update database
+        database["PT"][self.p_id][0] = self.name
+        ins = f"UPDATE players SET name = '{self.name}' WHERE id = {self.p_id}"
+        reactor.callFromThread(db_instruction, ins)
+
+        # Change table
+        self.parent.edit_name(self.name)
+
+    def skill_changed(self):
+        if self.p_id is None:
+            return
+        
+        # Invalid skill level check
+        try:
+            skill = int(self.skill_edit.text())
+        except ValueError:
+            return
+
+        # No change
+        if skill == self.skill:
+            return
+        self.skill = skill
+
+        # Update database
+        database["PT"][self.p_id][1] = self.skill
+        ins = f"UPDATE players SET skill = {self.skill} WHERE id = {self.p_id}"
+        reactor.callFromThread(db_instruction, ins)
+
+        # Change table
+        self.parent.edit_skill(self.skill)
+        
+# END class PlayerEditToolBox
+
 class PlayersWidget(QWidget):
     def __init__(self, parent):
         super().__init__(parent)
         self.setLayout(QHBoxLayout())
 
-        # Assuming you have a method to fetch player data from the database
-        self.database = self.fetch_player_data_from_database()
-
         # Table Widget - Players and Skill Levels
         self.table_widget = QTableWidget()
-        self.table_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.layout().addWidget(self.table_widget, 4.0)  # Set stretch factor to 4
+        self.table_widget.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        #self.table_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.layout().addWidget(self.table_widget, 4)  # Set stretch factor to 4
 
         # Set up table headers
         self.table_widget.setColumnCount(2)
         self.table_widget.setHorizontalHeaderLabels(["Player Name", "Skill Level"])
 
         # Populate the table with player names and skill levels
-        for player_data in self.database:
-            player_name, skill_level = player_data[0], player_data[1]
+        p_id_list = [ p_id for p_id in database["PT"] if p_id is not None ]
+        p_id_list = sorted(p_id_list)
+        player_name, skill_level = database["PT"][None]
+        self.add_player_to_table(player_name, skill_level)
+        for p_id in p_id_list:
+            player_name, skill_level = database["PT"][p_id]
             self.add_player_to_table(player_name, skill_level)
-
+        self.table_widget.setCurrentCell(0, 0)
+        self.tb = PlayerEditToolBox(self, None)
+        self.layout().addWidget(self.tb, 1) # Set stretch factor to 1
+        
         # Connect the itemClicked signal to the on_item_clicked method
         self.table_widget.itemClicked.connect(self.on_item_clicked)
-
-        # ToolBox Widget - Buttons for Actions
-        self.toolbox = QToolBox()
-        self.toolbox.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.layout().addWidget(self.toolbox, 1.0)  # Set stretch factor to 1
-
-        # Page 1: Edit Name
-        edit_name_page = QWidget()
-        edit_name_layout = QVBoxLayout(edit_name_page)
-
-        self.edit_name_label = QLabel("Enter new name:")
-        self.edit_name_input = QLineEdit()
-
-        self.edit_name_button = QPushButton("Edit Name")
-        self.edit_name_button.clicked.connect(self.edit_name)
-
-        edit_name_layout.addWidget(self.edit_name_label)
-        edit_name_layout.addWidget(self.edit_name_input)
-        edit_name_layout.addWidget(self.edit_name_button)
-
-        self.toolbox.addItem(edit_name_page, "Edit Name")
-
-        # Page 2: Edit Skill Level
-        edit_skill_page = QWidget()
-        edit_skill_layout = QVBoxLayout(edit_skill_page)
-
-        self.edit_skill_label = QLabel("Enter new skill level:")
-        self.edit_skill_input = QLineEdit()
-
-        self.edit_skill_button = QPushButton("Edit Skill Level")
-        self.edit_skill_button.clicked.connect(self.edit_skill)
-
-        edit_skill_layout.addWidget(self.edit_skill_label)
-        edit_skill_layout.addWidget(self.edit_skill_input)
-        edit_skill_layout.addWidget(self.edit_skill_button)
-
-        self.toolbox.addItem(edit_skill_page, "Edit Skill Level")
-
-    def fetch_player_data_from_database(self):
-        # Replace this with actual code to fetch player data from your database
-        # This is just a placeholder, you need to implement the actual data retrieval
-        # For example, you might use a database connection, API call, etc.
-        return [
-            ["Player1", 50],
-            ["Player2", 75],
-            # Add more players as needed
-        ]
 
     def add_player_to_table(self, player_name, skill_level):
         row_position = self.table_widget.rowCount()
@@ -1003,36 +1025,20 @@ class PlayersWidget(QWidget):
         self.table_widget.setItem(row_position, 1, skill_item)
 
     def on_item_clicked(self, item):
-        player_name = self.table_widget.item(item.row(), 0).text()
-        # Do something with the selected player, e.g., update the buttons
-        print(f"Selected player: {player_name}")
+        p_id = player_name_to_id(self.table_widget.item(item.row(), 0).text())
+        prev = self.tb
+        self.tb = PlayerEditToolBox(self, p_id)
+        self.layout().replaceWidget(prev, self.tb)
+        prev.close()
 
-    def edit_name(self):
-        new_name = self.edit_name_input.text()
+    def edit_name(self, new_name):
         selected_row = self.table_widget.currentRow()
+        self.table_widget.item(selected_row, 0).setText(new_name)
 
-        if selected_row >= 0 and new_name:
-            # Update the database
-            player_data = self.database[selected_row]
-            player_data[0] = new_name
-
-            # Update the table
-            self.table_widget.item(selected_row, 0).setText(new_name)
-            print(f"Edit Name button clicked. New name: {new_name}")
-
-    def edit_skill(self):
-        new_skill = self.edit_skill_input.text()
+    def edit_skill(self, new_skill):
         selected_row = self.table_widget.currentRow()
-
-        if selected_row >= 0 and new_skill.isdigit():
-            # Update the database
-            player_data = self.database[selected_row]
-            player_data[1] = int(new_skill)
-
-            # Update the table
-            self.table_widget.item(selected_row, 1).setText(new_skill)
-            print(f"Edit Skill Level button clicked. New skill level: {new_skill}")
-            
+        self.table_widget.item(selected_row, 1).setText(str(new_skill))
+        
 # END class PlayerWidget
 
 # Class for the main window of the program.
@@ -1103,10 +1109,6 @@ class RPPCS_Main(QMainWindow):
         p_button_action = QAction("&Players", self)
         p_button_action.triggered.connect(self.set_central_widget_players)
         toolbar.addAction(p_button_action)
-        # "Settings" button
-        s_button_action = QAction("&Settings", self)
-        s_button_action.triggered.connect(self.set_central_widget_settings)
-        toolbar.addAction(s_button_action)
 
         self.set_central_widget_tournaments()
 
@@ -1151,20 +1153,15 @@ class RPPCS_Main(QMainWindow):
     def set_central_widget_tournaments(self):
         # Set the window's central widget to be the tournament editor widget
         # Parent is the main window, tournament id is zero.
+        self.p_widget = None
         self.t_widget = TournamentWidget(parent = self, t_id = current_tournament_id)
         self.setCentralWidget(self.t_widget)
             
     def set_central_widget_players(self):
-    # Set the window's central widget to be the player editor widget.
-        self.p_widget = PlayersWidget(parent=self)
+        # Set the window's central widget to be the player editor widget.
+        self.t_widget = None
+        self.p_widget = PlayersWidget(parent = self)
         self.setCentralWidget(self.p_widget)
-        self.p_widget.show()
-
-    def set_central_widget_settings(self):
-        # Set the window's central widget to be the tournament editor widget.
-        label = QLabel("Settings Mode (TBD)")
-        label.setAlignment(Qt.AlignCenter)
-        self.setCentralWidget(label)
         
 # END class RPPCS_Main
 
