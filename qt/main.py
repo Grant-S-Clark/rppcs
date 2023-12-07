@@ -1,3 +1,10 @@
+# Authors:
+#     Grant Clark
+#     Sude Gundogan
+#
+# Date:
+#     December 7th, 2023
+
 import sys
 import random
 import threading
@@ -69,6 +76,18 @@ def player_name_to_id(name):
             return p_id
     return None
 
+# Function used to truncate user names for rectangles.
+# This can still lead to them sticking outside of the
+# rectangle if the name is really long.
+def shorten_name(name):
+    name = name.split()
+    if len(name) > 1:
+        return name[0] + " " + name[1][0].upper() + "."
+    else:
+        return name[0]
+
+# Window created to allow for a user to delete a player when
+# selected in the main window's action bar.
 class PlayerDeletionWindow(QWidget):
     def __init__(self, parent):
         super().__init__(parent = None) # So it is a window
@@ -135,6 +154,9 @@ class PlayerDeletionWindow(QWidget):
 
 # END class PlayerDeletionWindow
 
+
+# Window created to allow for a user to create a player, given a name
+# and skill level when selected in the main window's action bar.
 class PlayerCreationWindow(QWidget):
     def __init__(self, parent):
         super().__init__(parent = None) # So it is a window
@@ -207,6 +229,8 @@ class PlayerCreationWindow(QWidget):
 # END class PlayerCreationWindow
 
 
+# Window created to allow for a user to delete tournament, selected
+# by its name, when selected by the user in the main window's action bar.
 class TournamentDeletionWindow(QWidget):
     def __init__(self, parent):
         super().__init__(parent = None) # So it is a window
@@ -268,6 +292,10 @@ class TournamentDeletionWindow(QWidget):
 
 # END class TournamentDeletionWindow
 
+
+# Window created to allow for a user to create a new tournament
+# with a given name and number of players when selected by the user
+# in the main window's action bar.
 class TournamentCreationWindow(QWidget):
     def __init__(self, parent):
         super().__init__(parent = None) # So it is a window
@@ -341,6 +369,9 @@ class TournamentCreationWindow(QWidget):
 
 # END class TournamentCreationWindow
 
+
+# Toolbox used by the TournamentWidget when a player rectangle is selected
+# in tournament view mode.
 class PlayerToolBox(QToolBox):
     def __init__(self, parent, p_rect, t_id):
         super().__init__(parent = parent)
@@ -366,6 +397,7 @@ class PlayerToolBox(QToolBox):
 # END class PlayerToolBox
 
 
+# Widget used in the MatchToolBox for each game in a given system.
 class GameWidget(QWidget):
     def __init__(self, parent, g_id):
         super().__init__(parent = parent)
@@ -428,6 +460,8 @@ class GameWidget(QWidget):
 
 # END class GameWidget
 
+
+# Toolbox used by the TournamentWidget when a match is selected.
 class MatchToolBox(QToolBox):
     def __init__(self, parent, m_rect, t_id):
         super().__init__(parent = parent)
@@ -508,6 +542,8 @@ class MatchToolBox(QToolBox):
 # END class MatchToolBox
 
 
+# Widget used by TournamentToolBox to change the name of a given tournament
+# while in tournament view mode.
 class TournamentRenameWidget(QWidget):
     def __init__(self, parent):
         super().__init__(parent = parent)
@@ -553,6 +589,7 @@ class TournamentRenameWidget(QWidget):
 # END class TournamentRenameWidget
 
 
+# Widget used by the TournamentToolBox for selecting a tournament.
 class TournamentSelectionWidget(QWidget):
     def __init__(self, parent, t_id):
         super().__init__(parent = parent)
@@ -591,6 +628,8 @@ class TournamentSelectionWidget(QWidget):
 # END class TournamentRenameWidget
 
 
+# Toolbox for changing names of tournaments, and for choosing which tournament
+# to display on the graphics scene when in tournament view mode.
 class TournamentToolBox(QToolBox):
     def __init__(self, parent, t_id):
         super().__init__(parent = parent)
@@ -625,6 +664,7 @@ class TournamentToolBox(QToolBox):
 # END class TournamentToolBox
 
 
+# Rectanle representing matches on the graphics scene.
 class MatchRect:
     def __init__(self,
                  x, y, w, h,
@@ -648,7 +688,7 @@ class MatchRect:
 
     def add_to_scene(self):
         self.rect = self.gs.addRect(QtCore.QRectF(self.x, self.y, self.w, self.h))
-        string = database["PT"][self.p1_id][0] + " V.S. " + database["PT"][self.p2_id][0]
+        string = shorten_name(database["PT"][self.p1_id][0]) + " V.S. " + shorten_name(database["PT"][self.p2_id][0])
         self.text = self.gs.addText(string)
         self.text.setPos(self.x, self.y)
 
@@ -657,7 +697,7 @@ class MatchRect:
         database["MT"][self.m_id][1] = p_id
         ins = f"UPDATE matches SET p1_id = {p_id} WHERE id = {self.m_id}"
         reactor.callFromThread(db_instruction, ins)
-        string = database["PT"][self.p1_id][0] + " V.S. " + database["PT"][self.p2_id][0]
+        string = shorten_name(database["PT"][self.p1_id][0]) + " V.S. " + shorten_name(database["PT"][self.p2_id][0])
         self.text.setPlainText(string)
 
     def set_player2(self, p_id):
@@ -665,12 +705,13 @@ class MatchRect:
         database["MT"][self.m_id][2] = p_id
         ins = f"UPDATE matches SET p2_id = {p_id} WHERE id = {self.m_id}"
         reactor.callFromThread(db_instruction, ins)
-        string = database["PT"][self.p1_id][0] + " V.S. " + database["PT"][self.p2_id][0]
+        string = shorten_name(database["PT"][self.p1_id][0]) + " V.S. " + shorten_name(database["PT"][self.p2_id][0])
         self.text.setPlainText(string)
 
 # END class MatchRect
 
-
+# Player rectangle objects to represent players on the
+# graphics scene.
 class PlayerRect:
     def __init__(self,
                  x, y, w, h,
@@ -681,7 +722,7 @@ class PlayerRect:
         self.h = h
         self.gs = graphics_scene
         self.p_id = p_id
-        self.name = database["PT"][self.p_id][0]
+        self.name = shorten_name(database["PT"][self.p_id][0])
         self.m_rect = None # match rectangle this player is associated with.
 
     def add_to_scene(self):
@@ -694,7 +735,7 @@ class PlayerRect:
         if p_id != self.p_id:
             old = self.p_id
             self.p_id = p_id
-            self.name = database["PT"][self.p_id][0]
+            self.name = shorten_name(database["PT"][self.p_id][0])
             self.text.setPlainText(self.name)
             # Edit the match player selection list.
             if self.m_rect.p1_id == old:
@@ -707,6 +748,8 @@ class PlayerRect:
 
 # END class PlayerRect
 
+# Graphics scene which will keep track of all rectangles and their connections
+# on the display.
 class TournamentGraphicsScene(QGraphicsScene):
     def __init__(self, parent):
         super().__init__(parent = parent)
@@ -924,6 +967,8 @@ class TournamentWidget(QWidget):
 
 # END class TournamentWidget
 
+# Toolbox to edit player name and player skill level while in
+# player view mode.
 class PlayerEditToolBox(QToolBox):
     def __init__(self, parent, p_id):
         super().__init__(parent = parent)
@@ -984,6 +1029,7 @@ class PlayerEditToolBox(QToolBox):
         
 # END class PlayerEditToolBox
 
+# The main widget for player view mode.
 class PlayersWidget(QWidget):
     def __init__(self, parent):
         super().__init__(parent)
@@ -1165,7 +1211,7 @@ class RPPCS_Main(QMainWindow):
         
 # END class RPPCS_Main
 
-    
+
 class SimpleClient(protocol.Protocol):
     def connectionMade(self):
         # Capture the protocol in the global variable simple_client
