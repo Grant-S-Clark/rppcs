@@ -1,3 +1,11 @@
+# Authors:
+#     Grant Clark
+#     Sude Gundogan
+#
+# Date:
+#     December 7th, 2023
+
+
 # pip install --user twisted
 from twisted.internet import protocol, reactor
 import sqlite3
