@@ -309,6 +309,7 @@ def init():
 class SimpleServer(protocol.Protocol):
     def connectionMade(self):
         print("Client has connected to the server.")
+        print(self.transport.getHost())
 
     def connectionLost(self, reason):
         print("Lost connection with client.")
@@ -377,7 +378,7 @@ def network_init():
             quit()
 
         if s_int != read_port:
-            save = (input("Would you like to save this port for next time? (y/n): ")).lower()[0] == 'y'
+            save = (input("Would you like to save this port for next time? (y/n): ")).lower().strip() == 'y'
             if save:
                 port_file = open("port.txt", 'w')
                 port_file.write(str(s_int))

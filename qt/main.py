@@ -1274,7 +1274,7 @@ def network_init():
         ip = read_ip
     else:
         if s != read_ip:
-            save = (input("Would you like to save this ip for next time? (y/n): ")).lower()[0] == 'y'
+            save = (input("Would you like to save this ip for next time? (y/n): ")).lower().strip() == 'y'
             if save:
                 port_file = open("ip.txt", 'w')
                 port_file.write(s)
@@ -1316,7 +1316,7 @@ def network_init():
             quit()
 
         if s_int != read_port:
-            save = (input("Would you like to save this port for next time? (y/n): ")).lower()[0] == 'y'
+            save = (input("Would you like to save this port for next time? (y/n): ")).lower().strip() == 'y'
             if save:
                 port_file = open("port.txt", 'w')
                 port_file.write(str(s_int))
