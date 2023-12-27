@@ -3,14 +3,15 @@
 #     Sude Gundogan
 #
 # Date:
-#     December 7th, 2023
+#     December 27th, 2023
 
 
 # pip install --user twisted
 from twisted.internet import protocol, reactor
 import sqlite3
 
-PORT = 8000
+DEFAULT_PORT = 17380
+port = None
 db = None # Will be set later.
 
 # Translate all tables into a dictionary of 2 dimensional lists.
@@ -341,13 +342,58 @@ class SimpleServer(protocol.Protocol):
             db.commit()
             # print("PROCESSED:", s)
 
+def network_init():
+    try:
+        port_file = open("port.txt")
+    except:
+        port_file = open("port.txt", 'w')
+        port_file.write(str(DEFAULT_PORT))
+        port_file.close()
+        port_file = open("port.txt")
+        
+    try:
+        read_port = int(port_file.read())
+        port_file.close()
+    except ValueError:
+        read_port = DEFAULT_PORT
+        port_file.close()
+        port_file = open("port.txt", 'w')
+        port_file.write(str(DEFAULT_PORT))
+        port_file.close()
+        
+    s = input(f"Input Port (Defualt {read_port}): ")
+    global port
+    
+    if not s:
+        port = read_port
+    else:
+        try:
+            s_int = int(s)
+        except ValueError:
+            print("Invalid port entry.")
+            quit()
+        if s_int < 1024 or s_int > 65535:
+            print("Invalid port entry.")
+            quit()
+
+        if s_int != read_port:
+            save = (input("Would you like to save this port for next time? (y/n): ")).lower()[0] == 'y'
+            if save:
+                port_file = open("port.txt", 'w')
+                port_file.write(str(s_int))
+                port_file.close()
+                print(f"Default port changed to {s_int}")
+        port = s_int
             
 if __name__ == "__main__":
+    network_init()
     init() # Set up database if necessary.
-    # create_debug_testing_data()
     
-    # This runs the protocol on port 8000
+    # This runs the protocol on specified port
     factory = protocol.ServerFactory() # Basic server factory.
     factory.protocol = SimpleServer
-    reactor.listenTCP(PORT, factory)
+    
+    reactor.listenTCP(port, factory)
+    print(f"Listening on port {port}.")
+    print("Ctrl + C to terminate.")
     reactor.run()

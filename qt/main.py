@@ -3,7 +3,7 @@
 #     Sude Gundogan
 #
 # Date:
-#     December 7th, 2023
+#     December 27th, 2023
 
 import sys
 import random
@@ -18,8 +18,10 @@ from twisted.internet import protocol, reactor
 
 WIN_X = 1000
 WIN_Y = 600
+DEFAULT_PORT = 17380
 
-PORT = 8000
+ip = None
+port = None
 
 # Global Objects
 app = None
@@ -1095,7 +1097,7 @@ class RPPCS_Main(QMainWindow):
         # Establish connection
         global simple_client
         factory = SimpleFactory()
-        reactor.connectTCP("localhost", PORT, factory)
+        reactor.connectTCP(ip, port, factory)
         self.t = threading.Thread(target=reactor.run, args=(False,))
         self.t.start()
         # Wait until the connection is established.
@@ -1256,8 +1258,75 @@ class SimpleFactory(protocol.ClientFactory):
         
 # END SimpleFactory
 
+def network_init():
+    try:
+        ip_file = open("ip.txt")
+    except:
+        ip_file = open("ip.txt", "w")
+        ip_file.write("localhost")
+        ip_file.close()
+        ip_file = open("ip.txt")
 
+    read_ip = ip_file.read().strip()
+    s = input(f"Input the ip to connect to (Defualt {read_ip}): ")
+    global ip
+    if not s:
+        ip = read_ip
+    else:
+        if s != read_ip:
+            save = (input("Would you like to save this ip for next time? (y/n): ")).lower()[0] == 'y'
+            if save:
+                port_file = open("ip.txt", 'w')
+                port_file.write(s)
+                port_file.close()
+                print(f"Default ip changed to {s}")
+        ip = s
+    
+    try:
+        port_file = open("port.txt")
+    except:
+        port_file = open("port.txt", 'w')
+        port_file.write(str(DEFAULT_PORT))
+        port_file.close()
+        port_file = open("port.txt")
+        
+    try:
+        read_port = int(port_file.read())
+        port_file.close()
+    except ValueError:
+        read_port = DEFAULT_PORT
+        port_file.close()
+        port_file = open("port.txt", 'w')
+        port_file.write(str(DEFAULT_PORT))
+        port_file.close()
+        
+    s = input(f"Input Port (Defualt {read_port}): ")
+    global port
+    
+    if not s:
+        port = read_port
+    else:
+        try:
+            s_int = int(s)
+        except ValueError:
+            print("Invalid port entry.")
+            quit()
+        if s_int < 1024 or s_int > 65535:
+            print("Invalid port entry.")
+            quit()
+
+        if s_int != read_port:
+            save = (input("Would you like to save this port for next time? (y/n): ")).lower()[0] == 'y'
+            if save:
+                port_file = open("port.txt", 'w')
+                port_file.write(str(s_int))
+                port_file.close()
+                print(f"Default port changed to {s_int}")
+        port = s_int
+    
 if __name__ == "__main__":
+    network_init()
+    
     app = QApplication([])
     window = RPPCS_Main()
     window.show()
